@@ -1,0 +1,23 @@
+node_modules/
+.pnpm-store/
+.next/
+dist/
+coverage/
+.turbo/
+.vercel/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+*.pem
+*.key
+*.p12
+*.xlsx
+*.xls
+*.pdf
+!docs/**/*.pdf
+
+# Arquivos gerados
+package-lock.json
+**/next-env.d.ts
