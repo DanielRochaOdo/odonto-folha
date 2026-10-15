@@ -1,0 +1,23 @@
+{
+  "name": "@odontofolha/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@odontofolha/contracts": "workspace:*",
+    "hono": "^4.10.0"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^1.19.0",
+    "@odontofolha/tsconfig": "workspace:*",
+    "tsx": "^4.20.0",
+    "vitest": "^3.2.4"
+  }
+}
