@@ -24,7 +24,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Instalar dependências (lockfile pendente em G1)
-        run: pnpm install --no-frozen-lockfile
+      - name: Instalar dependências com lockfile congelado
+        run: pnpm install --frozen-lockfile
       - name: Build, lint, tipagem e testes
         run: pnpm check

@@ -17,3 +17,7 @@ coverage/
 *.xls
 *.pdf
 !docs/**/*.pdf
+
+# Arquivos gerados
+package-lock.json
+**/next-env.d.ts
