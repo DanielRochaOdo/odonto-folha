@@ -1,36 +1,41 @@
-# OdontoFolha
+# OdontoFolha — Grupo Odontoart
 
-Base técnica do sistema corporativo do Grupo Odontoart. **Este repositório ainda não implementa regras de folha salarial nem está pronto para produção.**
+Sistema web interno para reunir lançamentos mensais do DP, ADM e Central,
+organizar benefícios e comissões configuráveis e exportar planilhas por empresa.
 
-## Arquitetura
+**Situação:** implementação iniciada em branch de desenvolvimento, após definição
+funcional E0.1–E0.68. Ainda não há login funcional, banco provisionado ou ambiente
+online pronto para testar; não utilizar com dados reais.
 
-- `apps/web`: Next.js 16, React e interface web desktop-first.
-- `apps/api`: API Hono, com contratos versionados e sem acesso direto do frontend ao banco.
-- `packages/contracts`: esquemas públicos e validação com Zod.
-- `packages/database`: fronteira reservada à persistência Neon PostgreSQL/Drizzle (a configurar em G2).
-- `packages/ui`: futura biblioteca de componentes do design system.
-- `packages/tsconfig`: configuração TypeScript compartilhada.
+## Tecnologias existentes
+- Next.js 16 e React em apps/web.
+- API Hono em apps/api, frontend sem acesso direto a banco.
+- Contratos Zod em packages/contracts; tipos de folha iniciados na A1.
+- Persistência prevista em Neon PostgreSQL/Drizzle, autenticação Better Auth
+  e hospedagem Vercel, a configurar somente com aprovação específica.
 
-Veja [a arquitetura](docs/ARCHITECTURE.md), [as regras](docs/RULES.md), [a configuração local](docs/SETUP.md) e [o plano](docs/TASKS.md).
+## Desenvolvimento local
 
-## Início rápido
+Requisitos: Node.js 24, pnpm 10.
 
-Requer Node.js 24 e pnpm 10. **Não usar banco ou dados reais no desenvolvimento local.**
-
-```bash
+~~~bash
 corepack enable
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev
-```
-
-Web em http://localhost:3000; API em http://localhost:3001/api/health.
-
-```bash
 pnpm check
-```
+~~~
 
-**Importante:** o lockfile, as credenciais de Neon, autenticação, migrações, integração de deploy e a validação da API em Vercel ainda não foram concluídos. Não executar deploy ou operações em banco até cumprir os critérios G2. O fluxo de publicação exige PR e aprovação humana.
+Web: http://localhost:3000. Health da API: http://localhost:3001/api/health.
+As regras puras de cálculo e autorização estão em apps/api/src/dominio,
+com testes executados pelo pnpm check. Não existe rota de negócio desprotegida.
 
-## Projeto GitHub público
+## Plano e segurança
+- Especificação: docs/PRD.md
+- Execução e critérios de aceite: docs/TASKS.md e docs/IMPLEMENTACAO.md
+- Instruções obrigatórias: AGENTS.md e docs/RULES.md
+- Arquitetura: docs/ARCHITECTURE.md
 
-Nunca publicar PII, holerites, planilhas de colaboradores, segredos, dumps ou arquivos `.env`. Exemplos e testes devem usar dados fictícios.
+Repositório público: **não inserir credenciais, planilhas, CPF real, dados de RH,
+segredos, logs sensíveis ou dumps.** Seeds de conta ADMIN e credenciais reais
+devem ser geridos fora do Git. Nenhum agente faz merge direto na main ou deploy
+sem aprovação humana.
