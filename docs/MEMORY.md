@@ -1,19 +1,23 @@
-# MEMORY — Estado do projeto
+# MEMORY — Estado verificável do projeto
 
-**Última revisão proposta:** 15/10/2026.
-**Fonte autoritativa de implementação:** GitHub (código e histórico); `TASKS.md` reflete o plano, não substitui PR/CI.
+**Data da revisão:** 21/10/2026.
 
-## Decidido pelo proprietário
-Vercel, Neon, monorepo público sem dados privados, web desktop, autorização por empresa/unidade, visual Odontoart/Apple, revisão humana para a main. Sem restrição de rede/IP. ChatGPT + Codex como ferramentas de desenvolvimento.
+## Decisões do proprietário
+- Especificação funcional E0.1–E0.68 concluída em conversa; síntese em docs/PRD.md.
+- Primeira entrega para validação deve ser aplicação online **completa**, integrada,
+  protegida por login, acessível pelo navegador.
+- Conta inicial ADMIN criada por provisionamento privado e seguro (nenhuma senha em arquivos).
+- A1 autorizada: desenvolvimento em branch, documentação, código, testes e PR.
+- A2 (infra/banco), A3 (hospedagem), A4 (provisionamento de login) e A5 (produção/dados
+  reais) ainda exigem decisões/autorizações distintas.
 
-## Proposta técnica em aplicação
-Next.js, Hono, TypeScript, Turborepo/pnpm, Drizzle, Zod, Better Auth e biblioteca visual a estruturar.
+## Situação técnica conhecida
+- main no começo da A1: commit cc71769b5c83fce9c3e8add9dfad2068e4024385.
+- Apps web e API Hono existentes; health check; contratos Zod; CI pnpm check.
+- A1 inicia modelagem tipada, consolidação aritmética pura e testes;
+  **não significa autenticação, banco ou aplicativo ponta a ponta pronto**.
 
-## Situação
-G1 aberta em branch para revisão. Sem credenciais, banco de desenvolvimento conectado, autenticação funcional, aplicação de negócio ou deploy validado. A base técnica deve passar CI e ter lockfile antes da conclusão de G1.
-
-## Pendências/risco
-- Infraestrutura Vercel/Neon exige vínculo e confirmação de custo/limites pelo responsável.
-- Acesso a dados trabalhistas exige autorização e controles; a aplicação interna continua sujeita a obrigações legais.
-- Dois dias para logs técnicos não substituem retenção de auditoria.
-- Prazo desejado de MVP em 22/10/2026 não define escopo.
+## Engenharia
+Respeitar AGENTS.md e docs/RULES.md. PRs para revisão humana, sem acesso a
+segredos, planilhas reais ou infraestrutura não autorizada.
+A fonte de verdade de execução é o GitHub (código e histórico de PR/CI).
