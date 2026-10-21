@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '@odontofolha/contracts';
 
 /**
  * Configuração privada da API. Não expor os valores em logs, respostas HTTP

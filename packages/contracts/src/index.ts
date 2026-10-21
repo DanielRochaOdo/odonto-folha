@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export { z } from 'zod';
 
 /** Endpoint técnico público; contratos de negócio são reexportados separadamente. */
 export const healthSchema = z.object({
