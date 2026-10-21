@@ -5,12 +5,13 @@ import { z } from '@odontofolha/contracts';
  * ou código do navegador. Esta função não abre conexão com o banco.
  */
 const urlHttp = z.string().url().refine(
-  (valor) => ['http:', 'https:'].includes(new URL(valor).protocol),
+  (valor) => URL.canParse(valor) && ['http:', 'https:'].includes(new URL(valor).protocol),
   'Informe uma URL HTTP(S)',
 );
 
 const ambienteSchema = z.object({
   DATABASE_URL: z.string().url().refine((valor) => {
+    if (!URL.canParse(valor)) return false;
     const url = new URL(valor);
     return ['postgres:', 'postgresql:'].includes(url.protocol);
   }, 'Informe uma URL PostgreSQL válida'),
