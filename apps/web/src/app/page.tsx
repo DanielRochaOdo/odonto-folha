@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
 import Cadastros from './componentes/Cadastros';
+import ConfigCampos from './componentes/ConfigCampos';
 
 type Perfil = 'ADMIN' | 'DP' | 'ADM' | 'CENTRAL';
 type Sessao = { usuarioId: string; perfil: Perfil };
@@ -38,7 +39,7 @@ type Consolidacao = {
   abas: AbaEmpresa[];
   nomes: { empresas: Record<string, string>; setores: Record<string, string> };
 };
-type AbaNavegacao = 'Painel' | 'Cadastros' | 'Consolidação';
+type AbaNavegacao = 'Painel' | 'Cadastros' | 'Configuração' | 'Consolidação';
 
 const dinheiro = (v: number) => new Intl.NumberFormat('pt-BR',
   { style: 'currency', currency: 'BRL' }).format(v);
@@ -295,6 +296,8 @@ export default function PaginaInicial() {
             onClick={() => setAba('Painel')}>▤ <span>Competências</span></button>
           {permiteDp(sessao!.perfil) && <button className={aba === 'Cadastros' ? 'ativo' : ''}
             onClick={() => setAba('Cadastros')}>♙ <span>Cadastros</span></button>}
+          {permiteDp(sessao!.perfil) && <button className={aba === 'Configuração' ? 'ativo' : ''}
+            onClick={() => setAba('Configuração')}>◇ <span>Benefícios e comissões</span></button>}
           {permiteDp(sessao!.perfil) &&
             <button className={aba === 'Consolidação' ? 'ativo' : ''}
               onClick={() => setAba('Consolidação')}>▦ <span>Consolidação</span></button>}
@@ -306,7 +309,7 @@ export default function PaginaInicial() {
       <div className="corpo">
         <header className="cabecalho-app">
           <div><span className="sobre">GRUPO ODONTOART · ODONTOFOLHA</span>
-            <h1>{aba === 'Painel' ? 'Competências' : aba === 'Cadastros' ? 'Cadastros' : 'Consolidação mensal'}</h1></div>
+            <h1>{aba === 'Painel' ? 'Competências' : aba === 'Cadastros' ? 'Cadastros' : aba === 'Configuração' ? 'Benefícios e comissões' : 'Consolidação mensal'}</h1></div>
           <button onClick={() => void sair()} className="botao-sair">Sair da conta</button>
         </header>
         <div className="conteudo-app">
@@ -318,7 +321,7 @@ export default function PaginaInicial() {
               <p>Seu perfil está autenticado. A visualização setorial será liberada quando
                 os responsáveis e as competências estiverem configurados.</p>
             </section>
-          ) : aba === 'Cadastros' ? <Cadastros /> : aba === 'Painel' ? (
+          ) : aba === 'Cadastros' ? <Cadastros /> : aba === 'Configuração' ? <ConfigCampos /> : aba === 'Painel' ? (
             <>
               <div className="titulo-secao">
                 <div><h2>Visão geral</h2><p>Selecione uma competência para consultar os registros.</p></div>
