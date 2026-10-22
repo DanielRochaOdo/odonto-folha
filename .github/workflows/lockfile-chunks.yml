@@ -1,0 +1,33 @@
+name: Lockfile chunks temporário
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/lockfile-chunks.yml'
+permissions:
+  contents: read
+jobs:
+  gerar:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        parte: [0, 1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Resolver somente lockfile
+        run: pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+      - name: Emitir segmento controlado de lockfile
+        run: |
+          echo PART_NUMBER=${{ matrix.parte }}
+          base64 -w0 pnpm-lock.yaml | fold -w 3000 | awk -v p=${{ matrix.parte }} 'NR > p*40 && NR <= (p+1)*40 { print "LOCKFILE_CHUNK:" $0 }'
+          echo PART_DONE
