@@ -1,108 +1,438 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
 
-type Funcionario = { id: string; contratante: string; lotado: string; setor: string; cpf: string; nome: string; cargo: string; admissao: string; salario: number; ativo: boolean };
-type Campo = { id: string; nome: string; modulo: 'Benefício' | 'Comissão'; natureza: 'Provento' | 'Desconto'; ativo: boolean };
-type Dados = { funcionarios: Funcionario[]; campos: Campo[]; valores: Record<string, string> };
-type Aba = 'Visão geral' | 'Funcionários' | 'Benefícios' | 'Comissões' | 'Consolidação';
-const CHAVE = 'odontofolha-prototipo-v1';
-const moeda = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
-const id = () => crypto.randomUUID();
-const inicial: Dados = {
-  funcionarios: [
-    { id: 'f1', contratante: 'Odontoart Serviços', lotado: 'Odontoart Centro', setor: 'Clínica', cpf: '00000000000', nome: 'Ana Oliveira (fictícia)', cargo: 'Recepcionista', admissao: '2025-02-10', salario: 2200, ativo: true },
-    { id: 'f2', contratante: 'Odontoart Serviços', lotado: 'Odontoart Centro', setor: 'Administrativo', cpf: '11111111111', nome: 'Bruno Santos (fictício)', cargo: 'Assistente', admissao: '2024-08-01', salario: 2800, ativo: true },
-    { id: 'f3', contratante: 'Odontoart Clínicas', lotado: 'Odontoart Sul', setor: 'Atendimento', cpf: '22222222222', nome: 'Carla Lima (fictícia)', cargo: 'Atendente', admissao: '2026-01-15', salario: 2400, ativo: true },
-  ],
-  campos: [
-    { id: 'c1', nome: 'Vale-alimentação', modulo: 'Benefício', natureza: 'Provento', ativo: true },
-    { id: 'c2', nome: 'Desconto transporte', modulo: 'Benefício', natureza: 'Desconto', ativo: true },
-    { id: 'c3', nome: 'Comissão de atendimento', modulo: 'Comissão', natureza: 'Provento', ativo: true },
-  ],
-  valores: {},
+type Perfil = 'ADMIN' | 'DP' | 'ADM' | 'CENTRAL';
+type Sessao = { usuarioId: string; perfil: Perfil };
+type CompetenciaResumo = { id: string; ano: number; mes: number; revisao: number };
+type CampoDinamico = {
+  id: string; grupoId: string; grupoNome: string; nome: string;
+  origem: 'BENEFICIO' | 'COMISSAO';
+  tipo: 'moeda' | 'percentual' | 'data' | 'horario';
+  classificacao: 'provento' | 'desconto' | 'informativo';
+  ordemGlobal: number;
 };
-const abas: Aba[] = ['Visão geral', 'Funcionários', 'Benefícios', 'Comissões', 'Consolidação'];
-const valorChave = (competencia: string, funcionario: string, campo: string) => [competencia, funcionario, campo].join(':');
-function exportarCsv(nome: string, linhas: (string | number)[][]) {
-  const csv = '\uFEFF' + linhas.map(linha => linha.map(v => '"' + String(v).replaceAll('"', '""') + '"').join(';')).join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = nome; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+type Celula = {
+  situacao: 'preenchido' | 'pendente' | 'nao_aplicavel';
+  valor: number | string | null;
+  quantidadeParcelas: number;
+};
+type Funcionario = {
+  id: string; empresaContratanteId: string; empresaLotadoId: string;
+  setorLotacaoId: string; cpf: string; nome: string; cargo: string;
+  admissao: string; salarioContratual: number; ativo: boolean;
+};
+type Linha = {
+  funcionario: Funcionario; celulas: Record<string, Celula>;
+  totalAritmetico: number; parcial: boolean;
+};
+type AbaEmpresa = {
+  empresaContratanteId: string; funcionarios: Linha[];
+  totalAritmetico: number; totalSalarios: number; parcial: boolean;
+};
+type Consolidacao = {
+  competencia: { ano: number; mes: number };
+  revisao: number;
+  colunas: CampoDinamico[];
+  abas: AbaEmpresa[];
+  nomes: { empresas: Record<string, string>; setores: Record<string, string> };
+};
+type AbaNavegacao = 'Painel' | 'Consolidação';
+
+const dinheiro = (v: number) => new Intl.NumberFormat('pt-BR',
+  { style: 'currency', currency: 'BRL' }).format(v);
+const mes = (ano: number, numero: number) => new Intl.DateTimeFormat('pt-BR',
+  { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  .format(new Date(Date.UTC(ano, numero - 1, 1)));
+const nomeMes = (ano: number, numero: number) => {
+  const titulo = mes(ano, numero);
+  return titulo.charAt(0).toUpperCase() + titulo.slice(1);
+};
+
+async function lerErro(resposta: Response): Promise<string> {
+  if (resposta.status === 401) return 'Sua sessão expirou. Entre novamente.';
+  if (resposta.status === 403) return 'Seu perfil não permite esta operação.';
+  if (resposta.status === 409) return 'Outra alteração foi registrada. Atualize os dados.';
+  if (resposta.status >= 500) return 'O servidor não conseguiu concluir a operação.';
+  try {
+    const json: unknown = await resposta.json();
+    if (json && typeof json === 'object' && 'erro' in json &&
+      typeof json.erro === 'string') return json.erro;
+  } catch { /* resposta não é JSON */ }
+  return 'Não foi possível concluir a operação.';
 }
+const permiteDp = (perfil: Perfil) => perfil === 'ADMIN' || perfil === 'DP';
+
 export default function PaginaInicial() {
-  const [dados, setDados] = useState<Dados>(inicial);
-  const [carregado, setCarregado] = useState(false);
-  const [aba, setAba] = useState<Aba>('Visão geral');
-  const [competencia, setCompetencia] = useState('2026-10');
-  const [busca, setBusca] = useState('');
-  const [mostrarFuncionario, setMostrarFuncionario] = useState(false);
-  const [mostrarCampo, setMostrarCampo] = useState<'Benefício' | 'Comissão' | null>(null);
-  const [func, setFunc] = useState({ nome: '', cpf: '', cargo: '', contratante: '', lotado: '', setor: '', admissao: '', salario: '' });
-  const [campo, setCampo] = useState({ nome: '', natureza: 'Provento' as 'Provento' | 'Desconto' });
+  const [fase, setFase] = useState<'verificando' | 'visitante' | 'autenticado'>('verificando');
+  const [sessao, setSessao] = useState<Sessao | null>(null);
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [entrando, setEntrando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [aba, setAba] = useState<AbaNavegacao>('Painel');
+  const [competencias, setCompetencias] = useState<CompetenciaResumo[]>([]);
+  const [competenciaSelecionada, setCompetenciaSelecionada] = useState<string | null>(null);
+  const [consolidado, setConsolidado] = useState<Consolidacao | null>(null);
+  const [aberta, setAberta] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [novoMes, setNovoMes] = useState(false);
+  const [editando, setEditando] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
   useEffect(() => {
-    // Hidratação assíncrona: evita atualizar estado durante o próprio efeito.
-    const tarefa = window.setTimeout(() => {
-      try {
-        const salvo = localStorage.getItem(CHAVE);
-        if (salvo) setDados(JSON.parse(salvo) as Dados);
-      } catch { /* dados locais inválidos: manter demonstração */ }
-      setCarregado(true);
-    }, 0);
-    return () => window.clearTimeout(tarefa);
+    const controle = new AbortController();
+    fetch('/api/sessao', { cache: 'no-store', credentials: 'include', signal: controle.signal })
+      .then(async resposta => {
+        if (!resposta.ok) throw new Error('Sessão não disponível');
+        return resposta.json() as Promise<Sessao>;
+      })
+      .then(s => {
+        if (controle.signal.aborted) return;
+        setSessao(s); setFase('autenticado');
+      })
+      .catch(() => {
+        if (!controle.signal.aborted) setFase('visitante');
+      });
+    return () => controle.abort();
   }, []);
-  useEffect(() => { if (carregado) localStorage.setItem(CHAVE, JSON.stringify(dados)); }, [dados, carregado]);
-  const ativos = useMemo(() => dados.funcionarios.filter(f => f.ativo && (f.nome + f.cpf + f.setor).toLowerCase().includes(busca.toLowerCase())), [dados.funcionarios, busca]);
-  const camposAtivos = dados.campos.filter(c => c.ativo);
-  const obter = (f: string, c: string) => dados.valores[valorChave(competencia, f, c)] ?? '';
-  const alterar = (f: string, c: string, valor: string) => setDados(d => ({ ...d, valores: { ...d.valores, [valorChave(competencia, f, c)]: valor } }));
-  const total = (f: Funcionario) => f.salario + camposAtivos.reduce((s, c) => s + (c.natureza === 'Provento' ? 1 : -1) * (Number(obter(f.id, c.id)) || 0), 0);
-  const massa = ativos.reduce((s, f) => s + total(f), 0);
-  const exportar = () => {
-    const cabecalho = ['Empresa Contratante', 'Empresa Lotado', 'Setor de Lotação', 'CPF', 'Nome', 'Cargo', 'Admissão', 'Salário Contratual', ...camposAtivos.map(c => c.nome), 'Total aritmético'];
-    const empresas = [...new Set(ativos.map(f => f.contratante))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-    const linhas: (string | number)[][] = [cabecalho];
-    for (const empresa of empresas) {
-      for (const f of ativos.filter(x => x.contratante === empresa)) {
-        linhas.push([f.contratante, f.lotado, f.setor, f.cpf, f.nome, f.cargo, f.admissao, f.salario, ...camposAtivos.map(c => obter(f.id, c.id)), total(f)]);
-      }
+
+  async function carregarCompetencias() {
+    const resposta = await fetch('/api/competencias', { cache: 'no-store', credentials: 'include' });
+    if (!resposta.ok) throw new Error(await lerErro(resposta));
+    const corpo = await resposta.json() as { competencias: CompetenciaResumo[] };
+    setCompetencias(corpo.competencias);
+  }
+
+  useEffect(() => {
+    if (!sessao || !permiteDp(sessao.perfil)) return;
+    const controle = new AbortController();
+    fetch('/api/competencias', { cache: 'no-store', credentials: 'include', signal: controle.signal })
+      .then(async resposta => {
+        if (!resposta.ok) throw new Error(await lerErro(resposta));
+        return resposta.json() as Promise<{ competencias: CompetenciaResumo[] }>;
+      })
+      .then(resultado => { if (!controle.signal.aborted) setCompetencias(resultado.competencias); })
+      .catch(e => {
+        if (!controle.signal.aborted) setErro(
+          e instanceof Error ? e.message : 'Não foi possível carregar competências');
+      });
+    return () => controle.abort();
+  }, [sessao]);
+
+  async function entrar(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    setErro(''); setEntrando(true);
+    try {
+      const resposta = await fetch('/api/auth/sign-in/email', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password: senha }),
+      });
+      if (!resposta.ok) throw new Error(resposta.status === 404
+        ? 'A API de autenticação ainda não foi ativada.'
+        : 'E-mail ou senha inválidos.');
+      const atual = await fetch('/api/sessao', { cache: 'no-store', credentials: 'include' });
+      if (!atual.ok) throw new Error('Sua conta não possui perfil ativo. Consulte o ADMIN.');
+      setSessao(await atual.json() as Sessao);
+      setSenha(''); setFase('autenticado');
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível entrar');
+    } finally {
+      setEntrando(false);
     }
-    exportarCsv('odontofolha-' + competencia + '-PREVIA.csv', linhas);
-  };
-  const salvarFuncionario = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!func.nome.trim() || !func.cpf.match(/^\d{11}$/) || !func.contratante.trim() || !func.salario) return;
-    setDados(d => ({ ...d, funcionarios: [...d.funcionarios, { id: id(), nome: func.nome, cpf: func.cpf, cargo: func.cargo, contratante: func.contratante, lotado: func.lotado || func.contratante, setor: func.setor, admissao: func.admissao, salario: Number(func.salario), ativo: true }] }));
-    setMostrarFuncionario(false); setFunc({ nome: '', cpf: '', cargo: '', contratante: '', lotado: '', setor: '', admissao: '', salario: '' });
-  };
-  const salvarCampo = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!campo.nome.trim() || !mostrarCampo) return;
-    setDados(d => ({ ...d, campos: [...d.campos, { id: id(), nome: campo.nome, modulo: mostrarCampo, natureza: campo.natureza, ativo: true }] }));
-    setMostrarCampo(null); setCampo({ nome: '', natureza: 'Provento' });
-  };
-  return <div className="app">
-    <aside className="lateral">
-      <div className="identidade"><span className="logo">O</span><div><strong>OdontoFolha</strong><small>Grupo Odontoart</small></div></div>
-      <p className="menu-legenda">ESPAÇO DE TRABALHO</p>
-      <nav>{abas.map(a => <button key={a} className={'nav ' + (aba === a ? 'selecionado' : '')} onClick={() => setAba(a)}>{a === 'Visão geral' ? '◫' : a === 'Funcionários' ? '♙' : a === 'Benefícios' ? '◇' : a === 'Comissões' ? '◎' : '▦'} <span>{a}</span></button>)}</nav>
-      <div className="rodape-lateral"><span className="avatar">AD</span><div><strong>Ambiente de prévia</strong><small>Sem autenticação real</small></div></div>
-    </aside>
-    <main className="principal">
-      <header className="cabecalho"><div><span className="sobretitulo">PAINEL DE GESTÃO</span><h1>{aba}</h1></div><div className="acoes"><label className="competencia-label">Competência <input type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} /></label></div></header>
-      <div className="aviso-preview"><strong>PRÉVIA FUNCIONAL · DADOS FICTÍCIOS</strong><span>Salvamento somente neste navegador. Sem login, banco Neon ou exportação XLSX. Não insira dados pessoais reais.</span></div>
-      {aba === 'Visão geral' && <><section className="indicadores">
-        <article className="indicador"><span>Colaboradores ativos</span><strong>{dados.funcionarios.filter(f => f.ativo).length}</strong><small>Vínculos na prévia</small></article>
-        <article className="indicador"><span>Salários contratuais</span><strong>{moeda(dados.funcionarios.filter(f => f.ativo).reduce((s, f) => s + f.salario, 0))}</strong><small>Base da competência</small></article>
-        <article className="indicador"><span>Total aritmético</span><strong>{moeda(massa)}</strong><small>Salários + proventos − descontos</small></article>
-        <article className="indicador"><span>Campos configurados</span><strong>{camposAtivos.length}</strong><small>Benefícios e comissões</small></article>
-      </section><section className="painel"><div className="painel-titulo"><div><h2>Competência {competencia.split('-').reverse().join('/')}</h2><p>Registre lançamentos e confira os valores consolidados.</p></div><button className="primario" onClick={() => setAba('Consolidação')}>Abrir consolidação →</button></div><div className="atalhos"><button onClick={() => setAba('Funcionários')}>♙ Gerenciar funcionários <span>→</span></button><button onClick={() => setAba('Benefícios')}>◇ Configurar benefícios <span>→</span></button><button onClick={() => setAba('Comissões')}>◎ Registrar comissões <span>→</span></button></div></section></>}
-      {aba === 'Funcionários' && <section className="painel"><div className="painel-titulo"><div><h2>Cadastro de funcionários</h2><p>Gerencie os vínculos ativos da demonstração.</p></div><button className="primario" onClick={() => setMostrarFuncionario(true)}>+ Novo funcionário</button></div><div className="filtros"><input placeholder="Buscar por nome, CPF ou setor" value={busca} onChange={e => setBusca(e.target.value)} /></div><div className="tabela-scroll"><table><thead><tr><th>Nome</th><th>CPF</th><th>Empresa contratante</th><th>Lotação</th><th>Cargo</th><th>Salário</th><th>Ação</th></tr></thead><tbody>{ativos.map(f => <tr key={f.id}><td><strong>{f.nome}</strong></td><td>{f.cpf}</td><td>{f.contratante}</td><td>{f.setor}</td><td>{f.cargo}</td><td>{moeda(f.salario)}</td><td><button className="texto-botao" onClick={() => setDados(d => ({ ...d, funcionarios: d.funcionarios.map(x => x.id === f.id ? { ...x, ativo: false } : x) }))}>Inativar</button></td></tr>)}</tbody></table></div></section>}
-      {(aba === 'Benefícios' || aba === 'Comissões') && <section className="painel"><div className="painel-titulo"><div><h2>Campos de {aba.toLowerCase()}</h2><p>Crie campos e registre valores por funcionário e competência.</p></div><button className="primario" onClick={() => setMostrarCampo(aba === 'Benefícios' ? 'Benefício' : 'Comissão')}>+ Novo campo</button></div><div className="campos-lista">{dados.campos.filter(c => c.modulo === (aba === 'Benefícios' ? 'Benefício' : 'Comissão')).map(c => <div className="campo-item" key={c.id}><div><strong>{c.nome}</strong><small>{c.natureza} · {c.ativo ? 'Ativo' : 'Inativo'}</small></div><button className="secundario" onClick={() => setDados(d => ({ ...d, campos: d.campos.map(x => x.id === c.id ? { ...x, ativo: !x.ativo } : x) }))}>{c.ativo ? 'Desativar' : 'Ativar'}</button></div>)}</div><div className="painel-titulo"><div><h2>Lançamentos da competência</h2><p>Valores são salvos automaticamente neste navegador.</p></div></div><div className="tabela-scroll"><table><thead><tr><th>Funcionário</th>{dados.campos.filter(c => c.ativo && c.modulo === (aba === 'Benefícios' ? 'Benefício' : 'Comissão')).map(c => <th key={c.id}>{c.nome}</th>)}</tr></thead><tbody>{ativos.map(f => <tr key={f.id}><td><strong>{f.nome}</strong></td>{dados.campos.filter(c => c.ativo && c.modulo === (aba === 'Benefícios' ? 'Benefício' : 'Comissão')).map(c => <td key={c.id}><input className="valor" type="number" step="0.01" placeholder="Pendente" value={obter(f.id, c.id)} onChange={e => alterar(f.id, c.id, e.target.value)} /></td>)}</tr>)}</tbody></table></div></section>}
-      {aba === 'Consolidação' && <section className="painel"><div className="painel-titulo"><div><h2>Consolidado mensal</h2><p>Salário + proventos − descontos. Não representa salário líquido oficial.</p></div><button className="primario" onClick={exportar}>↓ Exportar CSV de prévia</button></div><div className="filtros"><input placeholder="Buscar funcionário" value={busca} onChange={e => setBusca(e.target.value)} /></div><div className="tabela-scroll"><table><thead><tr><th>Empresa</th><th>Funcionário</th><th>Salário</th>{camposAtivos.map(c => <th key={c.id}>{c.nome}<small>{c.natureza}</small></th>)}<th>Total</th></tr></thead><tbody>{ativos.map(f => <tr key={f.id}><td>{f.contratante}</td><td><strong>{f.nome}</strong></td><td>{moeda(f.salario)}</td>{camposAtivos.map(c => <td key={c.id}><input aria-label={c.nome + ' de ' + f.nome} className="valor" type="number" step="0.01" placeholder="Pendente" value={obter(f.id, c.id)} onChange={e => alterar(f.id, c.id, e.target.value)} /></td>)}<td><strong>{moeda(total(f))}</strong></td></tr>)}</tbody><tfoot><tr><td colSpan={3 + camposAtivos.length}>Total da competência</td><td>{moeda(massa)}</td></tr></tfoot></table></div></section>}
-      <footer className="rodape">OdontoFolha · Prévia navegável local · Não utilizar para folha real</footer>
+  }
+
+  async function sair() {
+    setErro('');
+    try {
+      const resposta = await fetch('/api/auth/sign-out', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', body: JSON.stringify({}),
+      });
+      if (!resposta.ok) throw new Error('Não foi possível encerrar a sessão');
+      setSessao(null); setFase('visitante'); setCompetencias([]);
+      setConsolidado(null); setCompetenciaSelecionada(null);
+      setEditando(null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao sair');
+    }
+  }
+
+  async function abrirCompetencia(id: string) {
+    setErro(''); setFeedback('');
+    const resposta = await fetch('/api/competencias/' + encodeURIComponent(id) + '/consolidacao',
+      { cache: 'no-store', credentials: 'include' });
+    if (!resposta.ok) {
+      setErro(await lerErro(resposta));
+      return;
+    }
+    setConsolidado(await resposta.json() as Consolidacao);
+    setCompetenciaSelecionada(id); setEditando(null); setAba('Consolidação');
+  }
+
+  async function criarCompetencia(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault(); setErro(''); setFeedback('');
+    const [ano, mesNumero] = aberta.split('-').map(Number);
+    const resposta = await fetch('/api/competencias', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ano, mes: mesNumero }),
+    });
+    if (!resposta.ok) { setErro(await lerErro(resposta)); return; }
+    const nova = await resposta.json() as CompetenciaResumo;
+    setNovoMes(false);
+    await carregarCompetencias();
+    await abrirCompetencia(nova.id);
+  }
+
+  async function salvarCelula(linha: Linha, campo: CampoDinamico, entrada: string) {
+    if (!consolidado || !competenciaSelecionada || salvando) return;
+    const anterior = linha.celulas[campo.id];
+    const representacao = anterior?.valor === null || anterior?.valor === undefined
+      ? '' : String(anterior.valor);
+    if (entrada === representacao) return;
+    if (anterior?.situacao === 'nao_aplicavel') return;
+    if (anterior?.quantidadeParcelas && !window.confirm(
+      'Existem parcelas nesta célula. Substituir pelo total direto preservando o histórico?')) return;
+
+    setSalvando(true); setErro(''); setFeedback('Salvando...');
+    try {
+      const id = encodeURIComponent(competenciaSelecionada);
+      const caminho = '/api/competencias/' + id + '/lancamentos';
+      const valor = campo.tipo === 'moeda' || campo.tipo === 'percentual'
+        ? Number(entrada) : entrada;
+      if (entrada.trim() === '') {
+        throw new Error('Para remover um lançamento, utilize a ação de limpar valores.');
+      }
+      if (typeof valor === 'number' && !Number.isFinite(valor))
+        throw new Error('Valor numérico inválido');
+      const resposta = await fetch(caminho, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          funcionarioId: linha.funcionario.id, campoId: campo.id, valor,
+          modo: 'total', versaoEsperada: consolidado.revisao,
+          confirmarSubstituicao: true,
+        }),
+      });
+      if (!resposta.ok) throw new Error(await lerErro(resposta));
+      const atualizado = await fetch('/api/competencias/' + id + '/consolidacao',
+        { cache: 'no-store', credentials: 'include' });
+      if (!atualizado.ok) throw new Error(await lerErro(atualizado));
+      setConsolidado(await atualizado.json() as Consolidacao);
+      setFeedback('Valor salvo com sucesso');
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível salvar');
+      setFeedback('Alteração não salva');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  function teclaCelula(e: KeyboardEvent<HTMLInputElement>, original: string) {
+    if (e.key === 'Enter') e.currentTarget.blur();
+    if (e.key === 'Escape') {
+      e.currentTarget.value = original;
+      e.currentTarget.blur();
+    }
+  }
+
+  if (fase === 'verificando') return (
+    <main className="tela-acesso">
+      <div className="cartao-acesso"><span className="logo-acesso">OF</span>
+        <h1>OdontoFolha</h1><p>Verificando a sessão...</p>
+      </div>
     </main>
-    {(mostrarFuncionario || mostrarCampo) && <div className="overlay" role="presentation"><div className="modal" role="dialog" aria-modal="true"><div className="painel-titulo"><h2>{mostrarFuncionario ? 'Novo funcionário' : 'Novo campo'}</h2><button className="texto-botao" onClick={() => { setMostrarFuncionario(false); setMostrarCampo(null); }}>Fechar ×</button></div>{mostrarFuncionario ? <form onSubmit={salvarFuncionario} className="formulario">{([['nome','Nome completo'],['cpf','CPF (11 dígitos)'],['cargo','Cargo'],['contratante','Empresa contratante'],['lotado','Empresa lotado'],['setor','Setor de lotação'],['admissao','Data de admissão'],['salario','Salário contratual']] as const).map(([k, titulo]) => <label key={k}>{titulo}<input required={['nome','cpf','contratante','salario'].includes(k)} type={k === 'admissao' ? 'date' : k === 'salario' ? 'number' : 'text'} min={k === 'salario' ? '0' : undefined} step={k === 'salario' ? '0.01' : undefined} value={func[k]} onChange={e => setFunc(x => ({ ...x, [k]: e.target.value }))} /></label>)}<button className="primario" type="submit">Salvar funcionário</button></form> : <form onSubmit={salvarCampo} className="formulario"><label>Nome do campo<input required value={campo.nome} onChange={e => setCampo(x => ({ ...x, nome: e.target.value }))} /></label><label>Natureza<select value={campo.natureza} onChange={e => setCampo(x => ({ ...x, natureza: e.target.value as 'Provento' | 'Desconto' }))}><option>Provento</option><option>Desconto</option></select></label><button className="primario" type="submit">Salvar campo</button></form>}</div></div>}
-  </div>;
+  );
+
+  if (fase === 'visitante') return (
+    <main className="tela-acesso">
+      <section className="lateral-acesso" aria-label="Apresentação">
+        <div className="marca-acesso"><span className="logo-acesso">OF</span>
+          <strong>OdontoFolha</strong></div>
+        <div className="mensagem-acesso">
+          <span className="sobre">GRUPO ODONTOART</span>
+          <h1>Organização e clareza em cada competência.</h1>
+          <p>Cadastros, benefícios, comissões e consolidação em um único ambiente protegido.</p>
+        </div>
+        <span className="rodape-acesso">Acesso restrito aos profissionais autorizados</span>
+      </section>
+      <section className="direita-acesso">
+        <div className="caixa-login">
+          <span className="sobre">ACESSO CORPORATIVO</span>
+          <h2>Entrar no OdontoFolha</h2>
+          <p>Utilize as credenciais fornecidas pela administração do sistema.</p>
+          <form className="formulario-login" onSubmit={entrar}>
+            <label htmlFor="email">E-mail</label>
+            <input id="email" type="email" autoComplete="username" required
+              value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="usuario@empresa.com.br"/>
+            <label htmlFor="senha">Senha</label>
+            <input id="senha" type="password" autoComplete="current-password" required
+              value={senha} onChange={e => setSenha(e.target.value)}/>
+            {erro && <p role="alert" className="erro">{erro}</p>}
+            <button className="acao-principal" disabled={entrando} type="submit">
+              {entrando ? 'Autenticando...' : 'Entrar no sistema →'}
+            </button>
+          </form>
+          <p className="nota-seguranca">Sua sessão é validada pela API. Não há dados de folha armazenados neste navegador.</p>
+        </div>
+      </section>
+    </main>
+  );
+
+  return (
+    <div className="aplicacao">
+      <aside className="barra-lateral">
+        <div className="marca"><span className="logo-marca">OF</span>
+          <span><strong>OdontoFolha</strong><small>Grupo Odontoart</small></span>
+        </div>
+        <div className="grupo-navegacao">
+          <p>ESPAÇO DE TRABALHO</p>
+          <button className={aba === 'Painel' ? 'ativo' : ''}
+            onClick={() => setAba('Painel')}>▤ <span>Competências</span></button>
+          {permiteDp(sessao!.perfil) &&
+            <button className={aba === 'Consolidação' ? 'ativo' : ''}
+              onClick={() => setAba('Consolidação')}>▦ <span>Consolidação</span></button>}
+        </div>
+        <div className="perfil-atual"><div className="circulo-perfil">{sessao!.perfil.slice(0, 2)}</div>
+          <span><strong>Perfil {sessao!.perfil}</strong><small>Sessão autenticada</small></span>
+        </div>
+      </aside>
+      <div className="corpo">
+        <header className="cabecalho-app">
+          <div><span className="sobre">GRUPO ODONTOART · ODONTOFOLHA</span>
+            <h1>{aba === 'Painel' ? 'Competências' : 'Consolidação mensal'}</h1></div>
+          <button onClick={() => void sair()} className="botao-sair">Sair da conta</button>
+        </header>
+        <div className="conteudo-app">
+          {erro && <p role="alert" className="erro alerta-app">{erro}</p>}
+          {feedback && <p role="status" className="feedback">{feedback}</p>}
+          {!permiteDp(sessao!.perfil) ? (
+            <section className="painel-app">
+              <h2>Comissões do setor {sessao!.perfil}</h2>
+              <p>Seu perfil está autenticado. A visualização setorial será liberada quando
+                os responsáveis e as competências estiverem configurados.</p>
+            </section>
+          ) : aba === 'Painel' ? (
+            <>
+              <div className="titulo-secao">
+                <div><h2>Visão geral</h2><p>Selecione uma competência para consultar os registros.</p></div>
+                <button className="acao-principal" onClick={() => setNovoMes(!novoMes)}>
+                  {novoMes ? 'Cancelar' : '+ Nova competência'}
+                </button>
+              </div>
+              {novoMes && <form onSubmit={criarCompetencia} className="painel-app linha-criacao">
+                <label htmlFor="mes-abertura">Mês e ano</label>
+                <input id="mes-abertura" type="month" required value={aberta}
+                  onChange={e => setAberta(e.target.value)} />
+                <button className="acao-principal" type="submit">Criar competência</button>
+              </form>}
+              <div className="grade-competencias">
+                {competencias.map(c => <button key={c.id} className="cartao-competencia"
+                    onClick={() => void abrirCompetencia(c.id)}>
+                    <span className="tag-competencia">COMPETÊNCIA</span>
+                    <strong>{nomeMes(c.ano, c.mes)}</strong>
+                    <small>Revisão {c.revisao} · Abrir detalhes</small>
+                    <span className="seta-competencia">↗</span>
+                  </button>)}
+              </div>
+              {!competencias.length && <div className="painel-app estado-vazio">
+                <h2>Nenhuma competência cadastrada</h2>
+                <p>Crie a primeira competência após concluir os cadastros de empresas,
+                  funcionários e campos dinâmicos.</p>
+              </div>}
+            </>
+          ) : !consolidado ? (
+            <section className="painel-app estado-vazio">
+              <h2>Selecione uma competência</h2>
+              <p>Volte ao painel e abra o mês que deseja consultar.</p>
+              <button className="botao-secundario" onClick={() => setAba('Painel')}>Ver competências</button>
+            </section>
+          ) : (
+            <section className="painel-app">
+              <div className="titulo-secao">
+                <div><span className="sobre">CONSOLIDADO · {consolidado.revisao}ª REVISÃO</span>
+                  <h2>{nomeMes(consolidado.competencia.ano, consolidado.competencia.mes)}</h2>
+                  <p>Salário contratual + proventos monetários − descontos monetários.</p>
+                </div>
+                <div className="acoes-secao">
+                  <button className="botao-secundario" onClick={() => setAba('Painel')}>← Voltar</button>
+                  <a className="acao-principal" href={'/api/competencias/' +
+                    encodeURIComponent(competenciaSelecionada ?? '') + '/exportacao.xlsx'}>
+                    ↓ Exportar XLSX
+                  </a>
+                </div>
+              </div>
+              <p className="orientacao-tabela">Selecione o lápis ao final de uma linha para editar.
+                Pressione Enter ou Tab para salvar e Esc para desfazer antes de sair do campo.
+                Valores pendentes aparecem em branco; zero é informado explicitamente.</p>
+              <div className="rolagem-tabela"><table className="tabela-principal">
+                <thead><tr>
+                  <th>Empresa Contratante</th><th>Empresa Lotado</th>
+                  <th>Setor de Lotação</th><th>CPF</th><th>Nome</th>
+                  <th>Cargo</th><th>Admissão</th><th>Salário Contratual</th>
+                  {consolidado.colunas.map(c => <th key={c.id}
+                    className={c.origem === 'BENEFICIO' ? 'th-beneficio' : 'th-comissao'}>
+                    {c.grupoNome}<span>{c.nome}</span></th>)}
+                  <th>Total aritmético</th><th>Ação</th>
+                </tr></thead>
+                <tbody>{consolidado.abas.flatMap(empresa =>
+                  empresa.funcionarios.map(linha => (
+                    <tr key={linha.funcionario.id}>
+                      <td>{consolidado.nomes.empresas[linha.funcionario.empresaContratanteId] ?? 'Empresa não identificada'}</td>
+                      <td>{consolidado.nomes.empresas[linha.funcionario.empresaLotadoId] ?? 'Empresa não identificada'}</td>
+                      <td>{consolidado.nomes.setores[linha.funcionario.setorLotacaoId] ?? 'Setor não identificado'}</td>
+                      <td className="codigo">{linha.funcionario.cpf}</td>
+                      <td className="nome-pessoa">{linha.funcionario.nome}</td>
+                      <td>{linha.funcionario.cargo}</td>
+                      <td>{linha.funcionario.admissao}</td>
+                      <td className="moeda">{dinheiro(linha.funcionario.salarioContratual)}</td>
+                      {consolidado.colunas.map(c => {
+                        const cel = linha.celulas[c.id];
+                        const valor = cel?.valor === null || cel?.valor === undefined
+                          ? '' : String(cel.valor);
+                        const alteravel = editando === linha.funcionario.id &&
+                          cel?.situacao !== 'nao_aplicavel';
+                        return <td key={c.id} className="celula-dinamica">
+                          {alteravel ? (
+                            <input aria-label={c.nome + ' de ' + linha.funcionario.nome}
+                              className="editor-celula" key={consolidado.revisao + ':' + c.id}
+                              type={c.tipo === 'data' ? 'date' : c.tipo === 'horario' ? 'time'
+                                : c.tipo === 'moeda' || c.tipo === 'percentual' ? 'number' : 'text'}
+                              step="0.01" defaultValue={valor} disabled={salvando}
+                              onBlur={e => void salvarCelula(linha, c, e.target.value)}
+                              onKeyDown={e => teclaCelula(e, valor)} />
+                          ) : cel?.situacao === 'nao_aplicavel' ? <span className="nao-aplicavel">—</span>
+                            : cel?.situacao === 'pendente' ? <span className="pendente">Pendente</span>
+                              : c.tipo === 'moeda' && typeof cel.valor === 'number'
+                                ? dinheiro(cel.valor) : String(cel?.valor ?? '')}
+                        </td>;
+                      })}
+                      <td className="moeda forte">{dinheiro(linha.totalAritmetico)}
+                        {linha.parcial && <span className="parcial">Parcial</span>}</td>
+                      <td><button className="botao-editar" disabled={salvando}
+                        aria-label={'Editar linha de ' + linha.funcionario.nome}
+                        onClick={() => setEditando(editando === linha.funcionario.id
+                          ? null : linha.funcionario.id)}>
+                        {editando === linha.funcionario.id ? 'Concluir' : '✎'}
+                      </button></td>
+                    </tr>)))}
+                </tbody>
+                <tfoot>{consolidado.abas.map(empresa => <tr key={empresa.empresaContratanteId}>
+                  <td colSpan={8 + consolidado.colunas.length}>Total por empresa {consolidado.nomes.empresas[empresa.empresaContratanteId] ?? 'Não identificada'}
+                    {empresa.parcial ? ' (parcial)' : ''}</td>
+                  <td className="moeda forte">{dinheiro(empresa.totalAritmetico)}</td>
+                  <td></td>
+                </tr>)}</tfoot>
+              </table></div>
+              <p className="legenda-rodape">Resultado exclusivamente aritmético. Não representa salário líquido oficial.</p>
+            </section>
+          )}
+        </div>
+        <footer className="rodape-app">OdontoFolha · Grupo Odontoart · Uso interno e restrito</footer>
+      </div>
+    </div>
+  );
 }

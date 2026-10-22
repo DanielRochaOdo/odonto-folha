@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
+export { eq, and, desc } from 'drizzle-orm';
 import * as schema from './schema';
 
 export function criarConexao(url: string) {
@@ -20,7 +21,8 @@ export async function obterPerfilAtivo(conexao: ConexaoFolha, usuarioId: string)
   const perfil = await conexao.db.select({
     perfil: schema.usuariosPerfis.perfil,
   }).from(schema.usuariosPerfis)
-    .where(eq(schema.usuariosPerfis.usuarioId, usuarioId))
+    .where(and(eq(schema.usuariosPerfis.usuarioId, usuarioId),
+      eq(schema.usuariosPerfis.ativo, true)))
     .limit(1);
   return perfil[0]?.perfil ?? null;
 }
