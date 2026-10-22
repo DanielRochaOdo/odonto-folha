@@ -18,6 +18,20 @@ const campoSchema = z.object({
 }).strict();
 const statusSchema = z.object({ ativo: z.boolean() }).strict();
 
+const criacaoCompletaSchema = z.object({
+  nome, origem: z.enum(['BENEFICIO', 'COMISSAO']),
+  responsavel: z.enum(['ADM', 'CENTRAL', 'NENHUM']),
+  campo: z.object({
+    nome,
+    tipo: z.enum(['moeda', 'percentual', 'data', 'horario']),
+    classificacao: z.enum(['provento', 'desconto', 'informativo']),
+    ano: z.number().int().min(2000).max(2200),
+    mes: z.number().int().min(1).max(12),
+  }).strict(),
+  funcionariosIds: z.array(uuid).max(10000),
+}).strict();
+
+
 export function criarRotasConfiguracao(
   deps: Pick<DependenciasOperacionais, 'autenticar'> & { configuracao: Configuracao },
 ) {
@@ -34,6 +48,25 @@ export function criarRotasConfiguracao(
 
   app.get('/configuracao/campos', async c =>
     c.json(await deps.configuracao.listar()));
+
+
+  app.post('/configuracao/criacao', async c => {
+    const parsed = criacaoCompletaSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success || (parsed.data.origem === 'BENEFICIO' &&
+      parsed.data.responsavel !== 'NENHUM'))
+      return c.json({ erro: 'Verifique as informações da criação.' }, 400);
+    try {
+      const novo = await deps.configuracao.criarCompleto(parsed.data,
+        c.get('sessao').usuarioId);
+      return c.json(novo, 201);
+    } catch (e) {
+      const texto = e instanceof Error ? e.message : '';
+      const conhecido = /competência|funcionários|vínculo/i.test(texto);
+      return c.json({
+        erro: conhecido ? texto : 'Não foi possível finalizar a criação. Tente novamente.',
+      }, 400);
+    }
+  });
 
   app.post('/configuracao/grupos', async c => {
     const p = grupoSchema.safeParse(await c.req.json().catch(() => null));
