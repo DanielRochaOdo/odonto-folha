@@ -21,7 +21,10 @@ http://localhost:3001/api/health.
 ## Variáveis privadas
 
 O arquivo `.env.example` é apenas um modelo. Nunca envie ao GitHub arquivos
-com credenciais. Para execução local futura da integração, a API precisará de:
+com credenciais. O servidor local da API carrega automaticamente `apps/api/.env`
+ou o `.env` na raiz do repositório, priorizando variáveis já definidas no
+processo. A API valida o conjunto abaixo se qualquer variável de integração
+estiver presente:
 
 ```dotenv
 DATABASE_URL=postgresql://usuario:senha@host/banco?sslmode=require
@@ -31,10 +34,9 @@ WEB_ORIGIN=http://localhost:3000
 ```
 
 `DIRECT_URL` destina-se exclusivamente às migrações administrativas e não é
-necessária no processo HTTP da API. O módulo `config/ambiente.ts` valida as
-variáveis, mas **ainda não conecta Neon nem implementa autenticação**. O script
-de desenvolvimento ainda precisa receber carregamento explícito do arquivo
-de ambiente quando essa integração for ativada.
+necessária no processo HTTP da API. O carregamento e a validação **ainda não
+conectam o Neon nem implementam autenticação**. O health check continua
+disponível quando não há variáveis de integração definidas.
 
 ## Banco destinado à produção
 
