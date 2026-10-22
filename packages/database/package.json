@@ -15,5 +15,10 @@
     "drizzle-kit": "0.31.11",
     "@types/pg": "8.15.5",
     "@odontofolha/tsconfig": "workspace:*"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
   }
 }
