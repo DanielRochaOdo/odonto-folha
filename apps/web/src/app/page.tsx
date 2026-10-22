@@ -35,6 +35,7 @@ type Consolidacao = {
   revisao: number;
   colunas: CampoDinamico[];
   abas: AbaEmpresa[];
+  nomes: { empresas: Record<string, string>; setores: Record<string, string> };
 };
 type AbaNavegacao = 'Painel' | 'Consolidação';
 
@@ -105,8 +106,18 @@ export default function PaginaInicial() {
 
   useEffect(() => {
     if (!sessao || !permiteDp(sessao.perfil)) return;
-    void carregarCompetencias().catch(e =>
-      setErro(e instanceof Error ? e.message : 'Não foi possível carregar competências'));
+    const controle = new AbortController();
+    fetch('/api/competencias', { cache: 'no-store', credentials: 'include', signal: controle.signal })
+      .then(async resposta => {
+        if (!resposta.ok) throw new Error(await lerErro(resposta));
+        return resposta.json() as Promise<{ competencias: CompetenciaResumo[] }>;
+      })
+      .then(resultado => { if (!controle.signal.aborted) setCompetencias(resultado.competencias); })
+      .catch(e => {
+        if (!controle.signal.aborted) setErro(
+          e instanceof Error ? e.message : 'Não foi possível carregar competências');
+      });
+    return () => controle.abort();
   }, [sessao]);
 
   async function entrar(evento: FormEvent<HTMLFormElement>) {
@@ -348,11 +359,10 @@ export default function PaginaInicial() {
                 </div>
                 <div className="acoes-secao">
                   <button className="botao-secundario" onClick={() => setAba('Painel')}>← Voltar</button>
-                  <button className="acao-principal" onClick={() => {
-                    if (competenciaSelecionada)
-                      window.location.assign('/api/competencias/' +
-                        encodeURIComponent(competenciaSelecionada) + '/exportacao.xlsx');
-                  }}>↓ Exportar XLSX</button>
+                  <a className="acao-principal" href={'/api/competencias/' +
+                    encodeURIComponent(competenciaSelecionada ?? '') + '/exportacao.xlsx'}>
+                    ↓ Exportar XLSX
+                  </a>
                 </div>
               </div>
               <p className="orientacao-tabela">Selecione o lápis ao final de uma linha para editar.
@@ -371,9 +381,9 @@ export default function PaginaInicial() {
                 <tbody>{consolidado.abas.flatMap(empresa =>
                   empresa.funcionarios.map(linha => (
                     <tr key={linha.funcionario.id}>
-                      <td>{linha.funcionario.empresaContratanteId}</td>
-                      <td>{linha.funcionario.empresaLotadoId}</td>
-                      <td>{linha.funcionario.setorLotacaoId}</td>
+                      <td>{consolidado.nomes.empresas[linha.funcionario.empresaContratanteId] ?? 'Empresa não identificada'}</td>
+                      <td>{consolidado.nomes.empresas[linha.funcionario.empresaLotadoId] ?? 'Empresa não identificada'}</td>
+                      <td>{consolidado.nomes.setores[linha.funcionario.setorLotacaoId] ?? 'Setor não identificado'}</td>
                       <td className="codigo">{linha.funcionario.cpf}</td>
                       <td className="nome-pessoa">{linha.funcionario.nome}</td>
                       <td>{linha.funcionario.cargo}</td>
@@ -411,7 +421,7 @@ export default function PaginaInicial() {
                     </tr>)))}
                 </tbody>
                 <tfoot>{consolidado.abas.map(empresa => <tr key={empresa.empresaContratanteId}>
-                  <td colSpan={8 + consolidado.colunas.length}>Total por empresa {empresa.empresaContratanteId}
+                  <td colSpan={8 + consolidado.colunas.length}>Total por empresa {consolidado.nomes.empresas[empresa.empresaContratanteId] ?? 'Não identificada'}
                     {empresa.parcial ? ' (parcial)' : ''}</td>
                   <td className="moeda forte">{dinheiro(empresa.totalAritmetico)}</td>
                   <td></td>

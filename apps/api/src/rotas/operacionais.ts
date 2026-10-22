@@ -126,7 +126,7 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     const estado = await deps.buscarCompetencia(c.req.param('id'));
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     return c.json({ ...consolidarEstado(estado, await deps.funcionariosAtivos()),
-      revisao: estado.revisao });
+      revisao: estado.revisao, nomes: await deps.nomesExportacao() });
   });
 
   app.get('/competencias/:id/comissoes/:grupo', async c => {
