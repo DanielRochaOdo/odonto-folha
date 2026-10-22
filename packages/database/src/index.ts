@@ -1,8 +1,8 @@
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { eq } from 'drizzle-orm';
 import * as schema from './schema';
 
-/** Cria o cliente sob demanda, sem iniciar queries no import ou no build. */
 export function criarConexao(url: string) {
   const endereco = new URL(url);
   if (!['postgres:', 'postgresql:'].includes(endereco.protocol))
@@ -15,3 +15,12 @@ export function criarConexao(url: string) {
 }
 export type ConexaoFolha = ReturnType<typeof criarConexao>;
 export * as tabelas from './schema';
+
+export async function obterPerfilAtivo(conexao: ConexaoFolha, usuarioId: string) {
+  const perfil = await conexao.db.select({
+    perfil: schema.usuariosPerfis.perfil,
+  }).from(schema.usuariosPerfis)
+    .where(eq(schema.usuariosPerfis.usuarioId, usuarioId))
+    .limit(1);
+  return perfil[0]?.perfil ?? null;
+}
