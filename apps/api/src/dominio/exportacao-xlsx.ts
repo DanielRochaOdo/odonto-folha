@@ -2,7 +2,7 @@ import type { Consolidacao } from './consolidacao';
 
 export type NomesExportacao = { empresas: Record<string, string>; setores: Record<string, string> };
 type Arquivo = { nome: string; conteudo: string };
-const xml = (s: string) => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
+const xml = (s: string) => s.split('').filter(ch => { const n = ch.charCodeAt(0); return n >= 32 || n === 9 || n === 10 || n === 13; }).join('')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 const ref = (i: number): string => {
@@ -23,7 +23,7 @@ function nome(mapa: Record<string, string>, chave: string): string {
   return mapa[chave];
 }
 function titulo(nomeOriginal: string, existentes: Set<string>): string {
-  const base = nomeOriginal.replace(/[\\/*?:\[\]]/g, ' ').replace(/^'+|'+$/g, '').trim().slice(0, 31) || 'Empresa';
+  const base = [...nomeOriginal].map(ch => '\\/*?:[]'.includes(ch) ? ' ' : ch).join('').replace(/^'+|'+$/g, '').trim().slice(0, 31) || 'Empresa';
   let valor = base;
   for (let n = 2; existentes.has(valor.toLowerCase()); n++) {
     const sufixo = ' (' + n + ')';
