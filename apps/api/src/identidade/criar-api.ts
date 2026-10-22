@@ -3,6 +3,13 @@ import { healthSchema } from '@odontofolha/contracts';
 import type { AmbienteApi } from '../config/ambiente';
 import { criarIdentidade } from './auth';
 import { criarRepositorioPostgres } from '../repositorios/operacional-postgres';
+import { criarCadastroPostgres } from '../repositorios/cadastros-postgres';
+import { criarRotasCadastros } from '../rotas/cadastros';
+import { criarConfiguracaoPostgres } from '../repositorios/configuracao-postgres';
+import { criarRotasConfiguracao } from '../rotas/configuracao';
+import { criarBeneficiosPostgres } from '../repositorios/beneficios-postgres';
+import { criarRotasBeneficios } from '../rotas/beneficios';
+import { criarRotasSetor } from '../rotas/setor';
 import { criarRotasOperacionais } from '../rotas/operacionais';
 
 /**
@@ -28,10 +35,30 @@ export function criarAplicacaoAutenticada(ambiente: AmbienteApi) {
     return c.json(sessao);
   });
 
+  const beneficios = criarBeneficiosPostgres(identidade.conexao);
   const operacionais = criarRotasOperacionais({
     ...criarRepositorioPostgres(identidade.conexao),
     autenticar: identidade.autenticar,
+    obterBeneficios: beneficios.carregar,
   });
   aplicacao.route('/', operacionais);
+  aplicacao.route('/', criarRotasSetor({
+    autenticar: identidade.autenticar,
+    listarCompetencias: criarRepositorioPostgres(identidade.conexao).listarCompetencias,
+    buscarCompetencia: criarRepositorioPostgres(identidade.conexao).buscarCompetencia,
+  }));
+  aplicacao.route('/', criarRotasBeneficios({
+    autenticar: identidade.autenticar,
+    buscarCompetencia: criarRepositorioPostgres(identidade.conexao).buscarCompetencia,
+    beneficios,
+  }));
+  aplicacao.route('/', criarRotasCadastros({
+    cadastro: criarCadastroPostgres(identidade.conexao),
+    autenticar: identidade.autenticar,
+  }));
+  aplicacao.route('/', criarRotasConfiguracao({
+    configuracao: criarConfiguracaoPostgres(identidade.conexao),
+    autenticar: identidade.autenticar,
+  }));
   return { aplicacao, identidade };
 }

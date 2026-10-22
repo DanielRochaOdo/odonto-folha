@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
+import Cadastros from './componentes/Cadastros';
+import ConfigCampos from './componentes/ConfigCampos';
+import PainelSetor from './componentes/PainelSetor';
 
 type Perfil = 'ADMIN' | 'DP' | 'ADM' | 'CENTRAL';
 type Sessao = { usuarioId: string; perfil: Perfil };
@@ -33,11 +36,16 @@ type AbaEmpresa = {
 type Consolidacao = {
   competencia: { ano: number; mes: number };
   revisao: number;
+  versaoBeneficios: number;
+  envios: {
+    grupoId: string; responsavel: 'ADM' | 'CENTRAL' | 'NENHUM';
+    concluido: boolean; concluidoEm: string | null; concluidoPor: string | null;
+  }[];
   colunas: CampoDinamico[];
   abas: AbaEmpresa[];
   nomes: { empresas: Record<string, string>; setores: Record<string, string> };
 };
-type AbaNavegacao = 'Painel' | 'Consolidação';
+type AbaNavegacao = 'Painel' | 'Cadastros' | 'Configuração' | 'Consolidação';
 
 const dinheiro = (v: number) => new Intl.NumberFormat('pt-BR',
   { style: 'currency', currency: 'BRL' }).format(v);
@@ -189,45 +197,99 @@ export default function PaginaInicial() {
   async function salvarCelula(linha: Linha, campo: CampoDinamico, entrada: string) {
     if (!consolidado || !competenciaSelecionada || salvando) return;
     const anterior = linha.celulas[campo.id];
-    const representacao = anterior?.valor === null || anterior?.valor === undefined
+    const valorAnterior = anterior?.valor === null || anterior?.valor === undefined
       ? '' : String(anterior.valor);
-    if (entrada === representacao) return;
-    if (anterior?.situacao === 'nao_aplicavel') return;
+    if (entrada === valorAnterior || anterior?.situacao === 'nao_aplicavel') return;
+    if (!entrada.trim()) { setErro('Para limpar use a ação específica de remover valor.'); return; }
     if (anterior?.quantidadeParcelas && !window.confirm(
-      'Existem parcelas nesta célula. Substituir pelo total direto preservando o histórico?')) return;
-
+      'Substituir as parcelas pelo total direto, preservando o histórico?')) return;
+    const valor = campo.tipo === 'moeda' || campo.tipo === 'percentual'
+      ? Number(entrada) : entrada;
+    if (typeof valor === 'number' && !Number.isFinite(valor)) {
+      setErro('Valor numérico inválido'); return;
+    }
+    let caminho = '/api/competencias/' + encodeURIComponent(competenciaSelecionada) + '/lancamentos';
+    let corpo: object = {
+      funcionarioId: linha.funcionario.id, campoId: campo.id, valor,
+      modo: 'total', versaoEsperada: consolidado.revisao, confirmarSubstituicao: true,
+    };
+    if (campo.origem === 'BENEFICIO') {
+      const escolha = window.prompt(
+        'Benefício recorrente: digite R para aplicar neste mês e nos próximos; M para exceção apenas neste mês. Cancelar não salva.',
+        'R',
+      );
+      if (escolha === null) return;
+      const acao = escolha.trim().toUpperCase() === 'R' ? 'base'
+        : escolha.trim().toUpperCase() === 'M' ? 'excecao' : null;
+      if (!acao) { setErro('Escolha R ou M para salvar o benefício.'); return; }
+      caminho = '/api/beneficios/' + encodeURIComponent(competenciaSelecionada) + '/' + acao;
+      corpo = {
+        funcionarioId: linha.funcionario.id, campoId: campo.id, valor,
+        versaoEsperada: consolidado.versaoBeneficios,
+      };
+    }
     setSalvando(true); setErro(''); setFeedback('Salvando...');
     try {
-      const id = encodeURIComponent(competenciaSelecionada);
-      const caminho = '/api/competencias/' + id + '/lancamentos';
-      const valor = campo.tipo === 'moeda' || campo.tipo === 'percentual'
-        ? Number(entrada) : entrada;
-      if (entrada.trim() === '') {
-        throw new Error('Para remover um lançamento, utilize a ação de limpar valores.');
-      }
-      if (typeof valor === 'number' && !Number.isFinite(valor))
-        throw new Error('Valor numérico inválido');
       const resposta = await fetch(caminho, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          funcionarioId: linha.funcionario.id, campoId: campo.id, valor,
-          modo: 'total', versaoEsperada: consolidado.revisao,
-          confirmarSubstituicao: true,
-        }),
+        body: JSON.stringify(corpo),
       });
       if (!resposta.ok) throw new Error(await lerErro(resposta));
-      const atualizado = await fetch('/api/competencias/' + id + '/consolidacao',
-        { cache: 'no-store', credentials: 'include' });
-      if (!atualizado.ok) throw new Error(await lerErro(atualizado));
-      setConsolidado(await atualizado.json() as Consolidacao);
+      await atualizarConsolidacao(competenciaSelecionada);
       setFeedback('Valor salvo com sucesso');
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível salvar');
       setFeedback('Alteração não salva');
-    } finally {
-      setSalvando(false);
-    }
+    } finally { setSalvando(false); }
+  }
+
+  async function atualizarConsolidacao(id: string) {
+    const resposta = await fetch('/api/competencias/' + encodeURIComponent(id) +
+      '/consolidacao', { cache: 'no-store', credentials: 'include' });
+    if (!resposta.ok) throw new Error(await lerErro(resposta));
+    setConsolidado(await resposta.json() as Consolidacao);
+  }
+
+  async function vincularCelula(funcionarioId: string, campoId: string) {
+    if (!competenciaSelecionada || !consolidado) return;
+    setErro(''); setSalvando(true);
+    try {
+      const resposta = await fetch('/api/competencias/' +
+        encodeURIComponent(competenciaSelecionada) + '/vinculos', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          funcionarioId, campoId, vinculado: true,
+          versaoEsperada: consolidado.revisao,
+        }),
+      });
+      if (!resposta.ok) throw new Error(await lerErro(resposta));
+      await atualizarConsolidacao(competenciaSelecionada);
+      setFeedback('Funcionário vinculado ao campo.');
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível vincular o funcionário');
+    } finally { setSalvando(false); }
+  }
+
+  async function reabrirComissao(grupoId: string) {
+    if (!competenciaSelecionada || !consolidado) return;
+    if (!window.confirm('Reabrir a comissão? O setor poderá voltar a lançar valores.')) return;
+    setErro(''); setSalvando(true);
+    try {
+      const response = await fetch('/api/competencias/' +
+        encodeURIComponent(competenciaSelecionada) + '/comissoes/' +
+        encodeURIComponent(grupoId) + '/reabrir', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ versaoEsperada: consolidado.revisao }),
+      });
+      if (!response.ok) throw new Error(await lerErro(response));
+      await atualizarConsolidacao(competenciaSelecionada);
+      setFeedback('Comissão reaberta para o setor.');
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao reabrir');
+    } finally { setSalvando(false); }
   }
 
   function teclaCelula(e: KeyboardEvent<HTMLInputElement>, original: string) {
@@ -292,6 +354,10 @@ export default function PaginaInicial() {
           <p>ESPAÇO DE TRABALHO</p>
           <button className={aba === 'Painel' ? 'ativo' : ''}
             onClick={() => setAba('Painel')}>▤ <span>Competências</span></button>
+          {permiteDp(sessao!.perfil) && <button className={aba === 'Cadastros' ? 'ativo' : ''}
+            onClick={() => setAba('Cadastros')}>♙ <span>Cadastros</span></button>}
+          {permiteDp(sessao!.perfil) && <button className={aba === 'Configuração' ? 'ativo' : ''}
+            onClick={() => setAba('Configuração')}>◇ <span>Benefícios e comissões</span></button>}
           {permiteDp(sessao!.perfil) &&
             <button className={aba === 'Consolidação' ? 'ativo' : ''}
               onClick={() => setAba('Consolidação')}>▦ <span>Consolidação</span></button>}
@@ -303,19 +369,15 @@ export default function PaginaInicial() {
       <div className="corpo">
         <header className="cabecalho-app">
           <div><span className="sobre">GRUPO ODONTOART · ODONTOFOLHA</span>
-            <h1>{aba === 'Painel' ? 'Competências' : 'Consolidação mensal'}</h1></div>
+            <h1>{aba === 'Painel' ? 'Competências' : aba === 'Cadastros' ? 'Cadastros' : aba === 'Configuração' ? 'Benefícios e comissões' : 'Consolidação mensal'}</h1></div>
           <button onClick={() => void sair()} className="botao-sair">Sair da conta</button>
         </header>
         <div className="conteudo-app">
           {erro && <p role="alert" className="erro alerta-app">{erro}</p>}
           {feedback && <p role="status" className="feedback">{feedback}</p>}
           {!permiteDp(sessao!.perfil) ? (
-            <section className="painel-app">
-              <h2>Comissões do setor {sessao!.perfil}</h2>
-              <p>Seu perfil está autenticado. A visualização setorial será liberada quando
-                os responsáveis e as competências estiverem configurados.</p>
-            </section>
-          ) : aba === 'Painel' ? (
+            <PainelSetor perfil={sessao!.perfil as 'ADM' | 'CENTRAL'}/>
+          ) : aba === 'Cadastros' ? <Cadastros /> : aba === 'Configuração' ? <ConfigCampos /> : aba === 'Painel' ? (
             <>
               <div className="titulo-secao">
                 <div><h2>Visão geral</h2><p>Selecione uma competência para consultar os registros.</p></div>
@@ -365,6 +427,13 @@ export default function PaginaInicial() {
                   </a>
                 </div>
               </div>
+              {consolidado.envios?.filter(envio => envio.responsavel !== 'NENHUM')
+                .map(envio => <div key={envio.grupoId} className="feedback">
+                  <strong>{consolidado.colunas.find(c => c.grupoId === envio.grupoId)?.grupoNome ?? 'Comissão'}</strong>
+                  {' · '}{envio.responsavel} · {envio.concluido ? 'Concluída' : 'Pendente'}
+                  {envio.concluido && <button className="botao-secundario" disabled={salvando}
+                    onClick={() => void reabrirComissao(envio.grupoId)}>Reabrir comissão</button>}
+                </div>)}
               <p className="orientacao-tabela">Selecione o lápis ao final de uma linha para editar.
                 Pressione Enter ou Tab para salvar e Esc para desfazer antes de sair do campo.
                 Valores pendentes aparecem em branco; zero é informado explicitamente.</p>
@@ -404,7 +473,13 @@ export default function PaginaInicial() {
                               step="0.01" defaultValue={valor} disabled={salvando}
                               onBlur={e => void salvarCelula(linha, c, e.target.value)}
                               onKeyDown={e => teclaCelula(e, valor)} />
-                          ) : cel?.situacao === 'nao_aplicavel' ? <span className="nao-aplicavel">—</span>
+                          ) : cel?.situacao === 'nao_aplicavel'
+                            ? (editando === linha.funcionario.id
+                              ? <button className="botao-secundario" disabled={salvando}
+                                onClick={() => void vincularCelula(linha.funcionario.id, c.id)}>
+                                Vincular
+                              </button>
+                              : <span className="nao-aplicavel">—</span>)
                             : cel?.situacao === 'pendente' ? <span className="pendente">Pendente</span>
                               : c.tipo === 'moeda' && typeof cel.valor === 'number'
                                 ? dinheiro(cel.valor) : String(cel?.valor ?? '')}
