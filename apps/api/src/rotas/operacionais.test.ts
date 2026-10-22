@@ -27,6 +27,7 @@ function ambiente(sessao: SessaoOperacional | null = null, conflito = false) {
     },
     funcionariosAtivos: async () => new Set(['v1']),
     nomesExportacao: async () => ({ empresas: { e1: 'Odontoart Exemplo' }, setores: { s1: 'Atendimento' } }),
+    obterBeneficios: async () => ({ versao: 0, bases: [], excecoes: [], auditoria: [] }),
     listarCompetencias: async () => [{ id: '1', ano: 2026, mes: 10, revisao: estado.revisao }],
     abrirNovaCompetencia: async (ano, mes) => ({ id: 'nova', ano, mes, revisao: 0 }),
   });

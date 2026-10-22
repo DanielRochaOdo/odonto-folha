@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { z } from '@odontofolha/contracts';
 import type { Perfil } from '@odontofolha/contracts';
 import type { EstadoCompetencia } from '../dominio/competencias';
-import { salvarLancamento, concluirComissao, reabrirComissao, consolidarEstado, definirVinculo } from '../dominio/competencias';
+import { salvarLancamento, concluirComissao, reabrirComissao, definirVinculo } from '../dominio/competencias';
+import { consolidarComBeneficios, type CatalogoBeneficios } from '../dominio/beneficios';
 import { gerarXlsx, type NomesExportacao } from '../dominio/exportacao-xlsx';
 import { podeEditarConsolidacao } from '../dominio/permissoes';
 
@@ -21,6 +22,7 @@ export type DependenciasOperacionais = {
   salvarSeRevisao: (id: string, revisaoAnterior: number, estado: EstadoCompetencia) => Promise<boolean>;
   funcionariosAtivos: () => Promise<ReadonlySet<string>>;
   nomesExportacao: () => Promise<NomesExportacao>;
+  obterBeneficios: () => Promise<CatalogoBeneficios>;
   listarCompetencias: () => Promise<{ id: string; ano: number; mes: number; revisao: number }[]>;
   abrirNovaCompetencia: (ano: number, mes: number, autorId: string) => Promise<{
     id: string; ano: number; mes: number; revisao: number;
@@ -125,7 +127,7 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
       return c.json({ erro: 'Sem permissão para consolidação geral' }, 403);
     const estado = await deps.buscarCompetencia(c.req.param('id'));
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
-    return c.json({ ...consolidarEstado(estado, await deps.funcionariosAtivos()),
+    return c.json({ ...consolidarComBeneficios(estado, await deps.obterBeneficios(), await deps.funcionariosAtivos()),
       revisao: estado.revisao, nomes: await deps.nomesExportacao() });
   });
 
@@ -222,7 +224,7 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
       return c.json({ erro: 'Somente DP/ADMIN pode exportar a consolidação' }, 403);
     const estado = await deps.buscarCompetencia(c.req.param('id'));
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
-    const dados = consolidarEstado(estado, await deps.funcionariosAtivos());
+    const dados = consolidarComBeneficios(estado, await deps.obterBeneficios(), await deps.funcionariosAtivos());
     try {
       const arquivo = gerarXlsx(dados, await deps.nomesExportacao());
       c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

@@ -12,7 +12,7 @@ import type { DependenciasOperacionais } from '../rotas/operacionais';
  */
 export function criarRepositorioPostgres(
   conexao: ConexaoFolha,
-): Omit<DependenciasOperacionais, 'autenticar'> {
+): Omit<DependenciasOperacionais, 'autenticar' | 'obterBeneficios'> {
   const { db } = conexao;
   const t = tabelas;
 
