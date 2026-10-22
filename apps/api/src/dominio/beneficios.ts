@@ -70,8 +70,17 @@ export function obterBeneficio(
   const excecao = [...catalogo.excecoes].reverse().find(e => e.funcionarioId === funcionarioId &&
     e.campoId === campoId && igual(e.competencia, competencia));
   if (excecao) return excecao.valor;
-  const base = [...catalogo.bases].reverse().find(e => e.funcionarioId === funcionarioId &&
-    e.campoId === campoId && ordem(e.inicio) <= ordem(competencia));
+  const base = catalogo.bases
+    .filter(e => e.funcionarioId === funcionarioId && e.campoId === campoId &&
+      ordem(e.inicio) <= ordem(competencia))
+    .reduce<VersaoBeneficio | undefined>((maisRecente, candidata) => {
+      if (!maisRecente) return candidata;
+      const inicioCandidata = ordem(candidata.inicio);
+      const inicioAtual = ordem(maisRecente.inicio);
+      return inicioCandidata > inicioAtual ||
+        (inicioCandidata === inicioAtual && candidata.criadaEm > maisRecente.criadaEm)
+        ? candidata : maisRecente;
+    }, undefined);
   return base?.valor ?? null;
 }
 export function atualizarBaseRecorrente(

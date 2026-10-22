@@ -37,6 +37,19 @@ describe('Recorrência, vigência, exceção e reajuste E0', () => {
     expect(consolidarComBeneficios(estado(), novo, new Set(['v1']))
       .abas[0].funcionarios[0].totalAritmetico).toBe(2100);
   });
+  it('prioriza a vigência mais recente mesmo quando uma versão antiga foi cadastrada depois', () => {
+    const c = {
+      ...catalogoVazio(),
+      bases: [
+        { id: 'novembro', funcionarioId: 'v1', campoId: 'b', inicio: novembro,
+          valor: 150, criadaEm: '2026-10-01T00:00:00.000Z', autorId: 'dp' },
+        { id: 'outubro', funcionarioId: 'v1', campoId: 'b', inicio: outubro,
+          valor: 100, criadaEm: '2026-11-01T00:00:00.000Z', autorId: 'dp' },
+      ],
+    };
+    expect(obterBeneficio(c, 'v1', 'b', outubro)).toBe(100);
+    expect(obterBeneficio(c, 'v1', 'b', novembro)).toBe(150);
+  });
   it('exceção tem precedência apenas no mês selecionado', () => {
     const c = atualizarBaseRecorrente(catalogoVazio(), estado(), 'v1', 'b', 100, dp, 0);
     const excecao = definirExcecaoMensal(c, estado(), 'v1', 'b', 0, dp, c.versao);
