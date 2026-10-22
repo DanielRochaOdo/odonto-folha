@@ -14,8 +14,6 @@ type Campo = {
 type Dados = {
   grupos: Grupo[]; campos: Campo[];
   funcionariosPorGrupo: Record<string, string[]>;
-  funcionariosElegiveisIds: string[];
-  competenciaReferencia: { ano: number; mes: number } | null;
 };
 type Funcionario = { id: string; nome: string; ativo: boolean };
 type Cadastro = { funcionarios: Funcionario[] };
@@ -23,7 +21,7 @@ type Passo = 1 | 2 | 3;
 
 const inicio: Dados = {
   grupos: [], campos: [], funcionariosPorGrupo: {},
-  funcionariosElegiveisIds: [], competenciaReferencia: null,
+
 };
 const informacoes: Record<Origem, { titulo: string; singular: string; explicacao: string }> = {
   BENEFICIO: {
@@ -125,9 +123,7 @@ export default function ConfigCampos() {
     setNomeCampo('');
     setTipo('moeda');
     setClassificacao('provento');
-    const referencia = dados.competenciaReferencia;
-    setCompetencia(referencia
-      ? referencia.ano + '-' + String(referencia.mes).padStart(2, '0') : mesAtual());
+    setCompetencia(mesAtual());
     setSelecionados([]);
     setBuscaFuncionario('');
     setPasso(1);
@@ -269,16 +265,11 @@ export default function ConfigCampos() {
   const grupoSelecionado = grupos.find(item => item.id === grupoId);
   const campos = dados.campos.filter(item => item.grupoId === grupoId);
   const rotulo = informacoes[aba];
-  const funcionariosAtivos = funcionarios.filter(item => item.ativo &&
-    dados.funcionariosElegiveisIds.includes(item.id));
-  const filtrados = funcionariosAtivos.filter(item =>
+  // Qualquer vínculo empregatício cadastrado pode ser associado ao grupo.
+  const filtrados = funcionarios.filter(item =>
     item.nome.toLocaleLowerCase('pt-BR').includes(buscaFuncionario.toLocaleLowerCase('pt-BR')));
   const idsVinculados = dados.funcionariosPorGrupo[grupoId] ?? [];
   const vinculados = funcionarios.filter(item => idsVinculados.includes(item.id));
-  const referencia = dados.competenciaReferencia;
-  const mesReferencia = referencia
-    ? referencia.ano + '-' + String(referencia.mes).padStart(2, '0') : null;
-  const semCompetenciaElegivel = !mesReferencia || competencia > mesReferencia;
 
   return (
     <section className="painel-app configuracao-campos">
@@ -414,7 +405,7 @@ export default function ConfigCampos() {
                 <div className="config-lista-vinculados">
                   <h5>Funcionários vinculados <span>({vinculados.length})</span></h5>
                   {vinculados.length === 0 ? (
-                    <p className="config-sem-vinculos">Nenhum funcionário vinculado à competência mais recente.</p>
+                    <p className="config-sem-vinculos">Nenhum funcionário vinculado a este cadastro.</p>
                   ) : (
                     <ul>{vinculados.map(item => (
                       <li key={item.id}>{item.nome}{!item.ativo ? ' (inativo)' : ''}</li>
@@ -532,14 +523,6 @@ export default function ConfigCampos() {
                 {passo === 3 && (
                   <div className="config-etapa-funcionarios">
                     <h4>Quem estará vinculado a {nome}?</h4>
-                    {semCompetenciaElegivel ? (
-                      <p className="config-aviso-vinculos">
-                        Ainda não há competência aberta igual ou posterior à vigência escolhida.
-                        Você pode finalizar sem funcionários e criar os vínculos quando houver
-                        uma competência adequada.
-                      </p>
-                    ) : (
-                      <>
                         <label htmlFor="wizard-busca">Buscar funcionário
                           <input id="wizard-busca" autoFocus
                             placeholder="Digite o nome do funcionário"
@@ -548,7 +531,7 @@ export default function ConfigCampos() {
                         <div className="config-selecao-todos">
                           <span>{selecionados.length} selecionado(s)</span>
                           <button type="button" className="botao-secundario" onClick={() =>
-                            setSelecionados(funcionariosAtivos.map(f => f.id))}>
+                            setSelecionados(funcionarios.map(f => f.id))}>
                             Selecionar todos
                           </button>
                           <button type="button" className="botao-secundario"
@@ -560,16 +543,14 @@ export default function ConfigCampos() {
                               <input type="checkbox" checked={selecionados.includes(item.id)}
                                 onChange={e => setSelecionados(atual => e.target.checked
                                   ? [...atual, item.id] : atual.filter(id => id !== item.id))} />
-                              <span>{item.nome}</span>
+                              <span>{item.nome}{item.ativo ? '' : ' (inativo)'}</span>
                             </label>
                           ))}
                           {filtrados.length === 0 && (
                             <p className="config-sem-vinculos">
-                              Nenhum funcionário ativo encontrado.</p>
+                              Nenhum funcionário cadastrado encontrado.</p>
                           )}
                         </div>
-                      </>
-                    )}
                   </div>
                 )}
                 {erroCriacao && <p className="erro" role="alert">{erroCriacao}</p>}
