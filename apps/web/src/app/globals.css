@@ -95,3 +95,81 @@
   .rodape-lateral .perfil-atual .circulo-perfil{width:30px;height:30px}
   .sair-lateral{font-size:11px}
 }
+
+/* Criação guiada em modal e detalhes sob demanda. */
+.config-detalhes{border:1px solid var(--linha);background:var(--superficie);
+  border-radius:12px;padding:20px;margin-top:12px}
+.config-titulo-detalhes{display:flex;justify-content:space-between;align-items:flex-start;
+  gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.config-titulo-detalhes h4{font-size:18px;margin:0 0 5px}
+.config-titulo-detalhes p{margin:0;font-size:12px}
+.config-lista-vinculados{background:var(--fundo);border:1px solid var(--linha);
+  border-radius:10px;padding:18px;margin-bottom:22px}
+.config-lista-vinculados h5{margin:0 0 10px;font-size:13px}
+.config-lista-vinculados h5 span{color:var(--suave);font-weight:400}
+.config-lista-vinculados ul{display:flex;flex-wrap:wrap;gap:9px;margin:0;padding:0;list-style:none}
+.config-lista-vinculados li{border:1px solid var(--linha);background:var(--superficie);
+  border-radius:20px;font-size:12px;padding:8px 12px}
+.config-sem-vinculos{color:var(--suave);font-size:12px;margin:0}
+.config-sobreposicao{position:fixed;inset:0;z-index:100;
+  display:flex;align-items:center;justify-content:center;padding:18px;
+  background:rgba(13,31,43,.66)}
+.config-modal{background:var(--superficie);border:1px solid var(--linha);
+  border-radius:17px;box-shadow:0 28px 90px rgba(0,0,0,.25);color:var(--texto);
+  width:min(100%,720px);max-height:calc(100dvh - 36px);overflow-y:auto}
+.config-modal-topo{display:flex;align-items:flex-start;justify-content:space-between;
+  gap:15px;padding:24px 28px 8px}
+.config-modal-topo h3{font-size:22px;margin:2px 0 6px}
+.config-modal-topo p{font-size:13px;margin:0}
+.config-modal-topo .config-modal-etapa{font-size:11px;text-transform:uppercase;
+  font-weight:800;letter-spacing:.09em;color:var(--verde)}
+.config-modal-fechar{width:36px;height:36px;display:grid;place-items:center;
+  background:var(--fundo);color:var(--texto);border:1px solid var(--linha);
+  border-radius:9px;font-size:23px;line-height:1}
+.config-progresso{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  list-style:none;gap:12px;padding:12px 28px 21px;margin:0;
+  border-bottom:1px solid var(--linha)}
+.config-progresso li{display:flex;align-items:center;gap:9px;min-width:0;
+  color:var(--suave)}
+.config-progresso li span{display:grid;place-items:center;flex-shrink:0;width:28px;height:28px;
+  border:1px solid var(--linha);border-radius:50%;font-size:12px;font-weight:800}
+.config-progresso li small{font-size:11px;line-height:1.35}
+.config-progresso li.atual{color:var(--texto);font-weight:700}
+.config-progresso li.atual span{background:var(--verde);color:#fff;border-color:var(--verde)}
+.config-progresso li.feito span{border-color:var(--verde);color:var(--verde)}
+.config-modal-corpo{min-height:175px;padding:24px 28px 16px}
+.config-form-uma-coluna{grid-template-columns:minmax(0,1fr);max-width:480px}
+.config-modal-acoes{border-top:1px solid var(--linha);padding:18px 28px 23px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px}
+.config-modal-acoes button{min-width:110px}
+.config-etapa-funcionarios h4{font-size:15px;margin:0 0 15px}
+.config-etapa-funcionarios>label{font-size:12px;font-weight:700;
+  display:flex;flex-direction:column;gap:7px}
+.config-etapa-funcionarios>label input{padding:12px;background:var(--superficie);
+  color:var(--texto);border:1px solid var(--linha);border-radius:9px}
+.config-selecao-todos{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0}
+.config-selecao-todos span{margin-right:auto;color:var(--suave);font-size:12px}
+.config-selecao-todos .botao-secundario{padding:8px 11px}
+.config-checklist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;
+  max-height:235px;overflow:auto;padding:4px}
+.config-item-funcionario{display:flex;gap:9px;align-items:center;
+  border:1px solid var(--linha);border-radius:9px;padding:11px;
+  font-size:12px;cursor:pointer;min-width:0}
+.config-item-funcionario input{accent-color:var(--verde);width:16px;height:16px;flex-shrink:0}
+.config-item-funcionario span{overflow-wrap:anywhere}
+.config-item-funcionario:has(input:checked){border-color:var(--verde);background:var(--fundo)}
+.config-aviso-vinculos{background:var(--fundo);border:1px solid var(--linha);
+  border-radius:10px;padding:16px;color:var(--suave)}
+.config-modal button:focus-visible,.config-modal select:focus-visible,
+.config-modal input:focus-visible,.config-item-funcionario:focus-within{
+  outline:3px solid var(--foco);outline-offset:2px}
+@media(max-width:600px){
+  .config-modal-topo{padding:20px 18px 7px}
+  .config-progresso{padding:12px 18px 16px;gap:6px}
+  .config-progresso li{flex-direction:column;align-items:flex-start;gap:4px}
+  .config-progresso li small{font-size:10px}
+  .config-modal-corpo{padding:20px 18px}
+  .config-modal-acoes{padding:16px 18px}
+  .config-checklist{grid-template-columns:1fr}
+  .config-titulo-detalhes .acao-principal{width:100%}
+}
