@@ -62,20 +62,7 @@ jobs:
           ODONTOFOLHA_ADMIN_PASSWORD: SenhaSintetica-CI-2026-Exclusiva
         run: |
           pnpm --filter @odontofolha/api exec node --import tsx scripts/criar-admin.ts admin-sintetico@example.invalid
-          psql "$DIRECT_URL" -tAc 'SELECT count(*) FROM usuarios_perfis WHERE perfil = '"'"'ADMIN'"'"' AND ativo = true' | grep -q '^1
-        run: |
-          find packages/database/drizzle apps/api/migrations -type f | sort | while read -r file; do
-            echo "ODONTOFILE_BEGIN:$file"
-            base64 -w0 "$file" | fold -w 3000 | sed 's/^/ODONTO_CHUNK:/'
-            echo "ODONTOFILE_END:$file"
-          done
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sql-inicial-sintetico
-          path: |
-            packages/database/drizzle/
-            apps/api/migrations/
-
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM usuarios_perfis WHERE perfil = 'ADMIN' AND ativo = true"
       - name: Mostrar artefatos SQL para incorporação versionada
         run: |
           find packages/database/drizzle apps/api/migrations -type f | sort | while read -r file; do
