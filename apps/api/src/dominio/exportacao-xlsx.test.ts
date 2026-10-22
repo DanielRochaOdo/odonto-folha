@@ -53,7 +53,9 @@ describe('Exportação XLSX conforme E0', () => {
     const xml = gerarXlsx(exemplo(), nomes).toString('utf8');
     expect(xml.indexOf('Atendimento — Valor')).toBeLessThan(xml.indexOf('Transporte — Valor'));
     expect(xml).toContain('r="I2" s="4"><v>0</v>');
-    expect(xml).not.toContain('r="I3" s="4"');
+    // Avaliar somente a primeira aba: na segunda, I3 é a fórmula do total vertical.
+    const primeiraAba = xml.slice(xml.indexOf('<worksheet '), xml.indexOf('</worksheet>') + '</worksheet>'.length);
+    expect(primeiraAba).not.toContain('r="I3" s="4"');
     expect(xml).toContain('r="K2" s="5"><v>0.15</v>');
   });
   it('escreve fórmulas por pessoa e totais verticais', () => {
