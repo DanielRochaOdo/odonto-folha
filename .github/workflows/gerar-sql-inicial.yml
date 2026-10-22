@@ -1,0 +1,67 @@
+name: Gerar SQL inicial sem conectar ao Neon
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/auth.config.ts'
+      - 'apps/api/src/identidade/auth.ts'
+      - 'packages/database/src/schema.ts'
+      - 'packages/database/drizzle.generate.config.ts'
+      - '.github/workflows/gerar-sql-inicial.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gerar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: senha-sintetica-apenas-ci
+          POSTGRES_DB: odontofolha
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:senha-sintetica-apenas-ci@localhost:5432/odontofolha
+      BETTER_AUTH_SECRET: segredo-sintetico-temporario-apenas-para-ci-com-64-caracteres
+      BETTER_AUTH_URL: http://localhost:3001
+      WEB_ORIGIN: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - name: Gerar SQL versionável do domínio Drizzle sem acesso remoto
+        run: pnpm --filter @odontofolha/database exec drizzle-kit generate --config drizzle.generate.config.ts
+      - name: Gerar SQL de Better Auth 1.7.7 contra PostgreSQL sintético local
+        run: |
+          mkdir -p apps/api/migrations
+          pnpm dlx auth@1.7.7 generate --config apps/api/auth.config.ts --output apps/api/migrations/0000_auth.sql
+      - name: Mostrar artefatos SQL para incorporação versionada
+        run: |
+          find packages/database/drizzle apps/api/migrations -type f | sort | while read -r file; do
+            echo "ODONTOFILE_BEGIN:$file"
+            base64 -w0 "$file" | fold -w 3000 | sed 's/^/ODONTO_CHUNK:/'
+            echo "ODONTOFILE_END:$file"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-inicial-sintetico
+          path: |
+            packages/database/drizzle/
+            apps/api/migrations/

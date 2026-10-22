@@ -9,7 +9,7 @@ import { criarIdentidade } from '../src/identidade/auth';
 async function executar() {
   const email = process.argv[2]?.trim().toLowerCase();
   const senha = process.env.ODONTOFOLHA_ADMIN_PASSWORD;
-  if (!email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     throw new Error('Informe o endereço de e-mail ADMIN.');
   if (!senha || senha.length < 12 || senha.length > 128)
     throw new Error('Informe a senha ADMIN de 12 a 128 caracteres em variável temporária.');
