@@ -37,6 +37,10 @@ type Consolidacao = {
   competencia: { ano: number; mes: number };
   revisao: number;
   versaoBeneficios: number;
+  envios: {
+    grupoId: string; responsavel: 'ADM' | 'CENTRAL' | 'NENHUM';
+    concluido: boolean; concluidoEm: string | null; concluidoPor: string | null;
+  }[];
   colunas: CampoDinamico[];
   abas: AbaEmpresa[];
   nomes: { empresas: Record<string, string>; setores: Record<string, string> };
@@ -268,6 +272,26 @@ export default function PaginaInicial() {
     } finally { setSalvando(false); }
   }
 
+  async function reabrirComissao(grupoId: string) {
+    if (!competenciaSelecionada || !consolidado) return;
+    if (!window.confirm('Reabrir a comissão? O setor poderá voltar a lançar valores.')) return;
+    setErro(''); setSalvando(true);
+    try {
+      const response = await fetch('/api/competencias/' +
+        encodeURIComponent(competenciaSelecionada) + '/comissoes/' +
+        encodeURIComponent(grupoId) + '/reabrir', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ versaoEsperada: consolidado.revisao }),
+      });
+      if (!response.ok) throw new Error(await lerErro(response));
+      await atualizarConsolidacao(competenciaSelecionada);
+      setFeedback('Comissão reaberta para o setor.');
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao reabrir');
+    } finally { setSalvando(false); }
+  }
+
   function teclaCelula(e: KeyboardEvent<HTMLInputElement>, original: string) {
     if (e.key === 'Enter') e.currentTarget.blur();
     if (e.key === 'Escape') {
@@ -403,6 +427,13 @@ export default function PaginaInicial() {
                   </a>
                 </div>
               </div>
+              {consolidado.envios?.filter(envio => envio.responsavel !== 'NENHUM')
+                .map(envio => <div key={envio.grupoId} className="feedback">
+                  <strong>{consolidado.colunas.find(c => c.grupoId === envio.grupoId)?.grupoNome ?? 'Comissão'}</strong>
+                  {' · '}{envio.responsavel} · {envio.concluido ? 'Concluída' : 'Pendente'}
+                  {envio.concluido && <button className="botao-secundario" disabled={salvando}
+                    onClick={() => void reabrirComissao(envio.grupoId)}>Reabrir comissão</button>}
+                </div>)}
               <p className="orientacao-tabela">Selecione o lápis ao final de uma linha para editar.
                 Pressione Enter ou Tab para salvar e Esc para desfazer antes de sair do campo.
                 Valores pendentes aparecem em branco; zero é informado explicitamente.</p>
