@@ -371,15 +371,28 @@ export default function PaginaInicial() {
             <button className={aba === 'Consolidação' ? 'ativo' : ''}
               onClick={() => setAba('Consolidação')}>▦ <span>Consolidação</span></button>}
         </div>
-        <div className="perfil-atual"><div className="circulo-perfil">{sessao!.perfil.slice(0, 2)}</div>
-          <span><strong>Perfil {sessao!.perfil}</strong><small>Sessão autenticada</small></span>
+        <div className="rodape-lateral">
+          <div className="perfil-atual">
+            <div className="circulo-perfil">{sessao!.perfil.slice(0, 2)}</div>
+            <span><strong>Perfil {sessao!.perfil}</strong><small>Sessão autenticada</small></span>
+          </div>
+          <button type="button" className="sair-lateral" onClick={() => void sair()}
+            aria-label="Sair da conta" title="Sair da conta">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+              strokeLinejoin="round" aria-hidden="true">
+              <path d="M10 17l5-5-5-5M15 12H3"/>
+              <path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/>
+            </svg>
+            <span>Sair da conta</span>
+          </button>
         </div>
       </aside>
       <div className="corpo">
         <header className="cabecalho-app">
           <div><span className="sobre">GRUPO ODONTOART · ODONTOFOLHA</span>
             <h1>{aba === 'Painel' ? 'Competências' : aba === 'Cadastros' ? 'Cadastros' : aba === 'Configuração' ? 'Benefícios e comissões' : 'Consolidação mensal'}</h1></div>
-          <button onClick={() => void sair()} className="botao-sair">Sair da conta</button>
+
         </header>
         <div className="conteudo-app">
           {erro && <p role="alert" className="erro alerta-app">{erro}</p>}
