@@ -77,6 +77,17 @@ export const gruposDinamicos = pgTable('grupos_dinamicos', {
   responsavel: text('responsavel', { enum: ['ADM', 'CENTRAL', 'NENHUM'] }).notNull().default('NENHUM'),
   ativo: boolean('ativo').notNull().default(true),
 });
+/**
+ * Associação permanente do vínculo empregatício à configuração do grupo.
+ * Independe da existência de competências e não altera snapshots históricos.
+ */
+export const vinculosGrupos = pgTable('vinculos_grupos', {
+  grupoId: uuid('grupo_id').notNull().references(() => gruposDinamicos.id),
+  vinculoId: uuid('vinculo_id').notNull().references(() => vinculosEmpregaticios.id),
+  criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+}, t => [primaryKey({ columns: [t.grupoId, t.vinculoId] }),
+  index('vinculos_grupos_funcionario_idx').on(t.vinculoId)]);
+
 export const camposDinamicos = pgTable('campos_dinamicos', {
   id: uuid('id').defaultRandom().primaryKey(),
   grupoId: uuid('grupo_id').notNull().references(() => gruposDinamicos.id),

@@ -15,3 +15,15 @@
 - Preferir mudança pequena, sem refatoração não relacionada.
 - Alterações em padrões técnicos exigem ADR; aprovação de ADR pertence ao humano responsável.
 - Manter documentação alinhada ao comportamento real; não marcar tarefas concluídas sem evidência.
+
+## Criação guiada e fluida — regra obrigatória de UI/UX
+
+- **Toda ação "Criar ..." que necessite de mais de uma informação/decisão deve abrir um modal assistido por etapas**, com uma responsabilidade nítida por tela, em vez de expor formulários extensos em linha. Um cadastro simples de um campo pode usar um único passo no modal.
+- Padrão: identificar/nomear → configurar campos/opções relevantes → selecionar vínculos/participantes, quando houver → **Finalizar**. Ex.: "Criar benefício" → nome do benefício → campo (tipo, classificação e competência) → funcionários vinculados. Aplicar a mesma lógica a comissões e aos próximos fluxos de criação do sistema.
+- Controles explícitos **Próximo**, **Voltar**, **Cancelar/Fechar** e **Finalizar**, com indicador de progresso. Validar a etapa antes de avançar; ao voltar preservar escolhas e valores. Não enviar dados incompletos nem criar duplicatas.
+- Preferir persistência **atômica no Finalizar**; se uma operação não admitir isso, explicitar os estados e permitir recuperação sem perda de dados. Nunca apresentar vínculo salvo quando o backend não o persistiu.
+- O modal precisa ser acessível por teclado e leitor de tela: título e descrição, foco inicial visível, foco contido no modal, Escape/Fechar, mensagens de erro e sucesso associadas à etapa, tema claro/escuro e layout responsivo. Respeitar movimento reduzido.
+- **Divulgação progressiva:** abrir formulários de ações secundárias somente após clique explícito. Ex.: selecionar um benefício/comissão revela os detalhes e o botão **+ Adicionar campo**; este abre seu formulário, com opção **Fechar/Cancelar** sem recarregar a página.
+- **Funcionários cadastrados podem ser vinculados a benefícios e comissões independentemente de competências abertas, da vigência do campo ou da situação ativa/inativa.** O vínculo do cadastro é permanente, e o usuário decide a seleção; os lançamentos nas competências permanecem sujeitos às regras de competência, status e histórico.
+- Na visualização de um benefício/comissão, mostrar seus campos e funcionários vinculados de modo claro, inclusive o estado vazio. Preservar regras de competência, histórico, autorização e escopo; jamais substituir a persistência real por estado local enganoso.
+- Evitar fricção, excesso de elementos simultâneos, etapas desnecessárias, navegação imprevisível e perda de contexto. Avaliar sempre a experiência completa (criar → conferir → alterar) antes da aprovação.

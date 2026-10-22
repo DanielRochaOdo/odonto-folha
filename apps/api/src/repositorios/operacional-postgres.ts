@@ -328,6 +328,27 @@ export function criarRepositorioPostgres(
           });
         }
       }
+      // O vínculo permanente existe mesmo sem competências anteriores. Ao abrir
+      // um mês, aplicar somente aos funcionários presentes no snapshot deste mês.
+      // Preservar também vínculos manuais herdados do mês anterior.
+      const associados = await tx.select().from(t.vinculosGrupos);
+      const gruposPorFuncionario = new Map<string, Set<string>>();
+      for (const item of associados) {
+        const conjunto = gruposPorFuncionario.get(item.grupoId) ?? new Set<string>();
+        conjunto.add(item.vinculoId);
+        gruposPorFuncionario.set(item.grupoId, conjunto);
+      }
+      for (const campo of campos) {
+        const idsDoGrupo = gruposPorFuncionario.get(campo.grupoId);
+        if (!idsDoGrupo) continue;
+        for (const vinculoId of idsDoGrupo) {
+          if (!funcionariosIds.has(vinculoId)) continue;
+          await tx.insert(t.vinculosCamposCompetencia).values({
+            competenciaId: nova.id, vinculoId, campoId: campo.id, ativo: true,
+          }).onConflictDoNothing();
+        }
+      }
+
       const gruposComissao = new Set(campos.flatMap(c =>
         grupoPorId.get(c.grupoId)?.origem === 'COMISSAO' ? [c.grupoId] : []));
       for (const grupoId of gruposComissao) {

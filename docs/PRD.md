@@ -33,7 +33,10 @@ Cadastro inicial poderá utilizar importação única autorizada, não importaç
 DP cria e nomeia livremente benefícios (ex.: Clínico, Orto, VT); acrescenta um ou mais campos
 independentes pelo botão +. Tipos admitidos: moeda R$, percentual %, data dd/mm/aaaa e hora hh:mm.
 Cada campo recebe sua própria coluna na consolidação. Vínculos podem ser definidos individualmente
-ou em lote, com histórico de ativação. Valores recorrentes persistem na competência seguinte.
+ou em lote, com histórico de ativação. A associação cadastral do funcionário ao benefício
+é independente de competências: qualquer vínculo empregatício cadastrado pode ser associado,
+mesmo sem competência aberta ou com vínculo inativo. Na abertura de uma competência, os
+lançamentos aplicam apenas os funcionários elegíveis ao período sem remover a associação cadastral. Valores recorrentes persistem na competência seguinte.
 Correções de um benefício recorrente, na tela Benefícios ou na tabela principal, atualizam a base da
 competência e das seguintes sem reescrever competências anteriores; pode-se optar por exceção
 somente do mês. Alertar sobre edição recente conflitante.
