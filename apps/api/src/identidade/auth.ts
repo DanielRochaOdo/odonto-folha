@@ -4,7 +4,10 @@ import type { AmbienteApi } from '../config/ambiente';
 import type { SessaoOperacional } from '../rotas/operacionais';
 
 /** Identidade privada: sem queries nem migrations no import. */
-export function criarIdentidade(ambiente: AmbienteApi) {
+export function criarIdentidade(
+  ambiente: AmbienteApi,
+  opcoes: { cadastroInicialLocal?: boolean } = {},
+) {
   const conexao = criarConexao(ambiente.DATABASE_URL);
   const auth = betterAuth({
     appName: 'OdontoFolha',
@@ -15,7 +18,9 @@ export function criarIdentidade(ambiente: AmbienteApi) {
     database: conexao.pool,
     emailAndPassword: {
       enabled: true,
-      disableSignUp: true,
+      // Cadastro fica sempre desabilitado na API HTTP.
+      // A exceção é exclusiva do processo CLI de bootstrap, nunca do servidor.
+      disableSignUp: !opcoes.cadastroInicialLocal,
       minPasswordLength: 12,
     },
   });
