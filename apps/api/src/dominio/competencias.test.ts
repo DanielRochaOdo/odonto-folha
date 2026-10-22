@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CampoDinamico, Funcionario } from '@odontofolha/contracts';
 import {
-  abrirCompetencia, incluirCampoNaCompetencia, definirVinculo, salvarLancamento,
+  abrirCompetencia, incluirCampoNaCompetencia, definirVinculo, definirBloqueioCampo, salvarLancamento,
   limparLancamentos, pendenciasComissao, concluirComissao, reabrirComissao, consolidarEstado,
 } from './competencias';
 
@@ -110,6 +110,31 @@ describe('Competências, papéis e auditoria E0', () => {
     expect(() => salvarLancamento(atual, { funcionarioId: pessoa.id,
       campoId: 'c1', valor: 20, modo: 'total', versaoEsperada: e.revisao }, adm))
       .toThrow(/Conflito/);
+  });
+  it('mantém coluna/valor após desativar, impedindo nova edição pelo setor', () => {
+    const e = novo();
+    const salvo = salvarLancamento(e, { funcionarioId: pessoa.id, campoId: 'c1',
+      valor: 50, modo: 'total', versaoEsperada: e.revisao }, adm).estado;
+    const bloqueado = definirBloqueioCampo(salvo, 'c1', true, dp, salvo.revisao);
+    expect(consolidarEstado(bloqueado, new Set([pessoa.id])).abas[0].funcionarios[0]
+      .celulas.c1.valor).toBe(50);
+    expect(() => salvarLancamento(bloqueado, { funcionarioId: pessoa.id,
+      campoId: 'c1', valor: 60, modo: 'total', versaoEsperada: bloqueado.revisao,
+      confirmarSubstituicao: true }, adm)).toThrow(/bloqueada/);
+    const reaberto = definirBloqueioCampo(bloqueado, 'c1', false, dp, bloqueado.revisao);
+    expect(reaberto.camposBloqueados).not.toContain('c1');
+  });
+  it('comissão NENHUM é editável por DP sem concluir envio', () => {
+    const c = abrirCompetencia({ competencia: outubro, funcionarios: [pessoa],
+      campos: [comissao], vinculos: [{ funcionarioId: pessoa.id, campoId: 'c1' }],
+      gruposComissao: [{ grupoId: 'c', responsavel: 'NENHUM' }] });
+    expect(() => concluirComissao(c, 'c', dp, c.revisao)).toThrow(/não utiliza/);
+    const editado = salvarLancamento(c, { funcionarioId: pessoa.id,
+      campoId: 'c1', valor: 70, modo: 'total', versaoEsperada: c.revisao }, dp);
+    expect(editado.estado.lancamentos[0].valor).toBe(70);
+    expect(() => salvarLancamento(c, { funcionarioId: pessoa.id,
+      campoId: 'c1', valor: 70, modo: 'total', versaoEsperada: c.revisao }, adm))
+      .toThrow(/escopo/);
   });
   it('DP pode limpar valor preservando lançamento não vigente e auditando', () => {
     const e = novo();

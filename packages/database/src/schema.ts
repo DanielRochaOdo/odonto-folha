@@ -141,7 +141,7 @@ export const excecoesBeneficio = pgTable('excecoes_beneficio', {
 export const enviosComissoes = pgTable('envios_comissoes', {
   competenciaId: uuid('competencia_id').notNull().references(() => competencias.id),
   grupoId: uuid('grupo_id').notNull().references(() => gruposDinamicos.id),
-  responsavel: text('responsavel', { enum: ['ADM', 'CENTRAL'] }).notNull(),
+  responsavel: text('responsavel', { enum: ['ADM', 'CENTRAL', 'NENHUM'] }).notNull(),
   concluido: boolean('concluido').notNull().default(false),
   concluidoEm: timestamp('concluido_em', { withTimezone: true }),
   concluidoPor: text('concluido_por'),

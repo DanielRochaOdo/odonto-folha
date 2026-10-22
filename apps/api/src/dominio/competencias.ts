@@ -24,6 +24,8 @@ export type EstadoCompetencia = {
   vinculos: VinculoCampo[];
   lancamentos: Lancamento[];
   envios: EnvioComissao[];
+  /** Campo já visível que foi desativado durante a competência: setor não edita. */
+  camposBloqueados: string[];
   revisao: number;
   auditoria: EventoAuditoria[];
 };
@@ -92,7 +94,7 @@ export function abrirCompetencia(dados: {
   return {
     competencia: { ...dados.competencia }, funcionarios: ativos, campos: colunas,
     vinculos: dados.vinculos.filter(v => idsFuncionario.has(v.funcionarioId) && idsCampo.has(v.campoId)),
-    lancamentos: [], envios: dados.gruposComissao
+    lancamentos: [], camposBloqueados: [], envios: dados.gruposComissao
       .filter(g => colunas.some(c => c.origem === 'COMISSAO' && c.grupoId === g.grupoId))
       .map(g => ({ grupoId: g.grupoId, responsavel: g.responsavel, concluido: false,
         concluidoEm: null, concluidoPor: null })),
@@ -161,6 +163,8 @@ export function salvarLancamento(
     if (!podePreencherComissao(ator.perfil, envio.responsavel, envio.concluido, associado))
       throw new Error('Comissão bloqueada ou fora do escopo do perfil');
   }
+  if (estado.camposBloqueados.includes(campo.id) && !podeEditarConsolidacao(ator.perfil))
+    throw new Error('Campo desativado: edição de setor bloqueada');
   conferirValor(campo, opcao.valor, opcao.modo);
   const modosAnteriores = new Set(anteriores.map(l => l.modo));
   const substitui = modosAnteriores.size > 0 &&
@@ -180,6 +184,21 @@ export function salvarLancamento(
   return { estado: alterar(estado, [...historico, novo],
     registro(estado, substitui ? 'LANCAMENTO_SUBSTITUIDO' : 'LANCAMENTO_CRIADO', novo.id, ator)),
     avisos };
+}
+/** Desativação no mês preserva coluna/valores, mas bloqueia novos envios do setor. */
+export function definirBloqueioCampo(
+  estado: EstadoCompetencia, campoId: string, bloqueado: boolean,
+  ator: AtorFolha, versaoEsperada: number,
+): EstadoCompetencia {
+  verificarRevisao(estado, versaoEsperada);
+  if (!podeEditarConsolidacao(ator.perfil)) throw new Error('Somente DP/ADMIN altera bloqueio');
+  if (!estado.campos.some(c => c.id === campoId)) throw new Error('Campo não pertence ao mês');
+  const bloqueios = new Set(estado.camposBloqueados);
+  if (bloqueado) bloqueios.add(campoId);
+  else bloqueios.delete(campoId);
+  return { ...estado, camposBloqueados: [...bloqueios], revisao: estado.revisao + 1,
+    auditoria: [...estado.auditoria, registro(estado, bloqueado ? 'CAMPO_BLOQUEADO' : 'CAMPO_REATIVADO',
+      campoId, ator)] };
 }
 /** Apaga valores vigentes, preservando eventos substituídos para auditoria. */
 export function limparLancamentos(
