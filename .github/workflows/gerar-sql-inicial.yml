@@ -52,7 +52,7 @@ jobs:
       - name: Gerar SQL de Better Auth 1.7.7 contra PostgreSQL sintético local
         run: |
           mkdir -p apps/api/migrations
-          pnpm dlx auth@1.7.7 generate --config apps/api/auth.config.ts --output apps/api/migrations/0000_auth.sql
+          pnpm dlx auth@1.7.7 generate --yes --config apps/api/auth.config.ts --output apps/api/migrations/0000_auth.sql
       - name: Mostrar artefatos SQL para incorporação versionada
         run: |
           find packages/database/drizzle apps/api/migrations -type f | sort | while read -r file; do

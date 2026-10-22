@@ -29,7 +29,7 @@ node --env-file=.env -e 'for(const v of ["DATABASE_URL","DIRECT_URL","BETTER_AUT
 pnpm --filter @odontofolha/database exec drizzle-kit generate --config drizzle.generate.config.ts
 
 mkdir -p apps/api/migrations
-pnpm dlx auth@1.7.7 generate --config apps/api/auth.config.ts --output apps/api/migrations/0000_auth.sql
+pnpm dlx auth@1.7.7 generate --yes --config apps/api/auth.config.ts --output apps/api/migrations/0000_auth.sql
 ~~~
 
 O Drizzle gera arquivos em packages/database/drizzle; o Better Auth gera
