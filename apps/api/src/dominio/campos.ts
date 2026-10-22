@@ -132,5 +132,7 @@ export function camposParaNovaCompetencia(catalogo: CatalogoCampos, competencia:
   return catalogo.campos.filter(c => c.ativo && gruposAtivos.has(c.grupoId) &&
     ordem(c.criadoEm) <= ordem(competencia))
     .sort((a, b) => a.ordemGlobal - b.ordemGlobal)
-    .map(({ ativo: _ativo, ...restante }) => restante);
+    .map(c => ({ id: c.id, grupoId: c.grupoId, grupoNome: c.grupoNome,
+      nome: c.nome, origem: c.origem, tipo: c.tipo, classificacao: c.classificacao,
+      ordemGlobal: c.ordemGlobal, criadoEm: c.criadoEm }));
 }
