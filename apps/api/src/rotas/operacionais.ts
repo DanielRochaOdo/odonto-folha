@@ -154,7 +154,8 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
           .map(campo => {
             const registros = estado.lancamentos.filter(l => l.vigente &&
               l.funcionarioId === f.id && l.campoId === campo.id);
-            return { id: campo.id, nome: campo.nome,
+            return { id: campo.id, nome: campo.nome, tipo: campo.tipo,
+              quantidadeParcelas: registros.filter(l => l.modo === 'parcela').length,
               valor: registros.length === 0 ? null
                 : registros[0].modo === 'total' ? registros[0].valor
                   : registros.reduce((s, l) => s + (typeof l.valor === 'number' ? l.valor : 0), 0),
