@@ -36,6 +36,7 @@ type AbaEmpresa = {
 type Consolidacao = {
   competencia: { ano: number; mes: number };
   revisao: number;
+  versaoBeneficios: number;
   colunas: CampoDinamico[];
   abas: AbaEmpresa[];
   nomes: { empresas: Record<string, string>; setores: Record<string, string> };
@@ -192,45 +193,79 @@ export default function PaginaInicial() {
   async function salvarCelula(linha: Linha, campo: CampoDinamico, entrada: string) {
     if (!consolidado || !competenciaSelecionada || salvando) return;
     const anterior = linha.celulas[campo.id];
-    const representacao = anterior?.valor === null || anterior?.valor === undefined
+    const valorAnterior = anterior?.valor === null || anterior?.valor === undefined
       ? '' : String(anterior.valor);
-    if (entrada === representacao) return;
-    if (anterior?.situacao === 'nao_aplicavel') return;
+    if (entrada === valorAnterior || anterior?.situacao === 'nao_aplicavel') return;
+    if (!entrada.trim()) { setErro('Para limpar use a ação específica de remover valor.'); return; }
     if (anterior?.quantidadeParcelas && !window.confirm(
-      'Existem parcelas nesta célula. Substituir pelo total direto preservando o histórico?')) return;
-
+      'Substituir as parcelas pelo total direto, preservando o histórico?')) return;
+    const valor = campo.tipo === 'moeda' || campo.tipo === 'percentual'
+      ? Number(entrada) : entrada;
+    if (typeof valor === 'number' && !Number.isFinite(valor)) {
+      setErro('Valor numérico inválido'); return;
+    }
+    let caminho = '/api/competencias/' + encodeURIComponent(competenciaSelecionada) + '/lancamentos';
+    let corpo: object = {
+      funcionarioId: linha.funcionario.id, campoId: campo.id, valor,
+      modo: 'total', versaoEsperada: consolidado.revisao, confirmarSubstituicao: true,
+    };
+    if (campo.origem === 'BENEFICIO') {
+      const escolha = window.prompt(
+        'Benefício recorrente: digite R para aplicar neste mês e nos próximos; M para exceção apenas neste mês. Cancelar não salva.',
+        'R',
+      );
+      if (escolha === null) return;
+      const acao = escolha.trim().toUpperCase() === 'R' ? 'base'
+        : escolha.trim().toUpperCase() === 'M' ? 'excecao' : null;
+      if (!acao) { setErro('Escolha R ou M para salvar o benefício.'); return; }
+      caminho = '/api/beneficios/' + encodeURIComponent(competenciaSelecionada) + '/' + acao;
+      corpo = {
+        funcionarioId: linha.funcionario.id, campoId: campo.id, valor,
+        versaoEsperada: consolidado.versaoBeneficios,
+      };
+    }
     setSalvando(true); setErro(''); setFeedback('Salvando...');
     try {
-      const id = encodeURIComponent(competenciaSelecionada);
-      const caminho = '/api/competencias/' + id + '/lancamentos';
-      const valor = campo.tipo === 'moeda' || campo.tipo === 'percentual'
-        ? Number(entrada) : entrada;
-      if (entrada.trim() === '') {
-        throw new Error('Para remover um lançamento, utilize a ação de limpar valores.');
-      }
-      if (typeof valor === 'number' && !Number.isFinite(valor))
-        throw new Error('Valor numérico inválido');
       const resposta = await fetch(caminho, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          funcionarioId: linha.funcionario.id, campoId: campo.id, valor,
-          modo: 'total', versaoEsperada: consolidado.revisao,
-          confirmarSubstituicao: true,
-        }),
+        body: JSON.stringify(corpo),
       });
       if (!resposta.ok) throw new Error(await lerErro(resposta));
-      const atualizado = await fetch('/api/competencias/' + id + '/consolidacao',
-        { cache: 'no-store', credentials: 'include' });
-      if (!atualizado.ok) throw new Error(await lerErro(atualizado));
-      setConsolidado(await atualizado.json() as Consolidacao);
+      await atualizarConsolidacao(competenciaSelecionada);
       setFeedback('Valor salvo com sucesso');
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível salvar');
       setFeedback('Alteração não salva');
-    } finally {
-      setSalvando(false);
-    }
+    } finally { setSalvando(false); }
+  }
+
+  async function atualizarConsolidacao(id: string) {
+    const resposta = await fetch('/api/competencias/' + encodeURIComponent(id) +
+      '/consolidacao', { cache: 'no-store', credentials: 'include' });
+    if (!resposta.ok) throw new Error(await lerErro(resposta));
+    setConsolidado(await resposta.json() as Consolidacao);
+  }
+
+  async function vincularCelula(funcionarioId: string, campoId: string) {
+    if (!competenciaSelecionada || !consolidado) return;
+    setErro(''); setSalvando(true);
+    try {
+      const resposta = await fetch('/api/competencias/' +
+        encodeURIComponent(competenciaSelecionada) + '/vinculos', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          funcionarioId, campoId, vinculado: true,
+          versaoEsperada: consolidado.revisao,
+        }),
+      });
+      if (!resposta.ok) throw new Error(await lerErro(resposta));
+      await atualizarConsolidacao(competenciaSelecionada);
+      setFeedback('Funcionário vinculado ao campo.');
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível vincular o funcionário');
+    } finally { setSalvando(false); }
   }
 
   function teclaCelula(e: KeyboardEvent<HTMLInputElement>, original: string) {
@@ -407,7 +442,13 @@ export default function PaginaInicial() {
                               step="0.01" defaultValue={valor} disabled={salvando}
                               onBlur={e => void salvarCelula(linha, c, e.target.value)}
                               onKeyDown={e => teclaCelula(e, valor)} />
-                          ) : cel?.situacao === 'nao_aplicavel' ? <span className="nao-aplicavel">—</span>
+                          ) : cel?.situacao === 'nao_aplicavel'
+                            ? (editando === linha.funcionario.id
+                              ? <button className="botao-secundario" disabled={salvando}
+                                onClick={() => void vincularCelula(linha.funcionario.id, c.id)}>
+                                Vincular
+                              </button>
+                              : <span className="nao-aplicavel">—</span>)
                             : cel?.situacao === 'pendente' ? <span className="pendente">Pendente</span>
                               : c.tipo === 'moeda' && typeof cel.valor === 'number'
                                 ? dinheiro(cel.valor) : String(cel?.valor ?? '')}
