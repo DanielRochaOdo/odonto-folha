@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from '@odontofolha/contracts';
 import type { Perfil } from '@odontofolha/contracts';
 import type { EstadoCompetencia } from '../dominio/competencias';
-import { salvarLancamento, concluirComissao, reabrirComissao, consolidarEstado } from '../dominio/competencias';
+import { salvarLancamento, concluirComissao, reabrirComissao, consolidarEstado, definirVinculo } from '../dominio/competencias';
 import { gerarXlsx, type NomesExportacao } from '../dominio/exportacao-xlsx';
 import { podeEditarConsolidacao } from '../dominio/permissoes';
 
@@ -21,7 +21,22 @@ export type DependenciasOperacionais = {
   salvarSeRevisao: (id: string, revisaoAnterior: number, estado: EstadoCompetencia) => Promise<boolean>;
   funcionariosAtivos: () => Promise<ReadonlySet<string>>;
   nomesExportacao: () => Promise<NomesExportacao>;
+  listarCompetencias: () => Promise<{ id: string; ano: number; mes: number; revisao: number }[]>;
+  abrirNovaCompetencia: (ano: number, mes: number, autorId: string) => Promise<{
+    id: string; ano: number; mes: number; revisao: number;
+  } | null>;
 };
+
+const schemaNovaCompetencia = z.object({
+  ano: z.number().int().min(2000).max(2200),
+  mes: z.number().int().min(1).max(12),
+}).strict();
+const schemaVinculo = z.object({
+  funcionarioId: z.string().min(1),
+  campoId: z.string().min(1),
+  vinculado: z.boolean(),
+  versaoEsperada: z.number().int().nonnegative(),
+}).strict();
 
 const schemaLancamento = z.object({
   funcionarioId: z.string().min(1),
@@ -47,12 +62,61 @@ function erroDominio(e: unknown): { status: 400 | 403 | 409; mensagem: string } 
 /** Rotas só são montadas depois de conectar Better Auth e repositório transacional. */
 export function criarRotasOperacionais(deps: DependenciasOperacionais) {
   const app = new Hono<{ Variables: { sessao: SessaoOperacional } }>().basePath('/api');
+  app.use('/competencias', async (c, proximo) => {
+    const sessao = await deps.autenticar(c.req.raw.headers);
+    if (!sessao) return c.json({ erro: 'Sessão necessária' }, 401);
+    c.set('sessao', sessao);
+    c.header('Cache-Control', 'no-store');
+    await proximo();
+  });
   app.use('/competencias/*', async (c, proximo) => {
     const sessao = await deps.autenticar(c.req.raw.headers);
     if (!sessao) return c.json({ erro: 'Sessão necessária' }, 401);
     c.set('sessao', sessao);
     c.header('Cache-Control', 'no-store');
     await proximo();
+  });
+
+  app.get('/competencias', async c => {
+    const sessao = c.get('sessao');
+    if (!podeEditarConsolidacao(sessao.perfil))
+      return c.json({ erro: 'Somente DP/ADMIN visualiza todas as competências' }, 403);
+    return c.json({ competencias: await deps.listarCompetencias() });
+  });
+
+  app.post('/competencias', async c => {
+    const sessao = c.get('sessao');
+    if (!podeEditarConsolidacao(sessao.perfil))
+      return c.json({ erro: 'Somente DP/ADMIN abre competências' }, 403);
+    const corpo = schemaNovaCompetencia.safeParse(await c.req.json().catch(() => null));
+    if (!corpo.success) return c.json({ erro: 'Competência inválida' }, 400);
+    const nova = await deps.abrirNovaCompetencia(
+      corpo.data.ano, corpo.data.mes, sessao.usuarioId);
+    if (!nova) return c.json({ erro: 'Competência já existe' }, 409);
+    return c.json(nova, 201);
+  });
+
+  app.post('/competencias/:id/vinculos', async c => {
+    const sessao = c.get('sessao');
+    if (!podeEditarConsolidacao(sessao.perfil))
+      return c.json({ erro: 'Somente DP/ADMIN altera vínculos' }, 403);
+    const corpo = schemaVinculo.safeParse(await c.req.json().catch(() => null));
+    if (!corpo.success) return c.json({ erro: 'Dados de vínculo inválidos' }, 400);
+    const id = c.req.param('id');
+    const estado = await deps.buscarCompetencia(id);
+    if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
+    try {
+      const novo = definirVinculo(estado, corpo.data.funcionarioId, corpo.data.campoId,
+        corpo.data.vinculado, { id: sessao.usuarioId, perfil: sessao.perfil },
+        corpo.data.versaoEsperada);
+      if (novo === estado) return c.json({ revisao: estado.revisao });
+      if (!(await deps.salvarSeRevisao(id, estado.revisao, novo)))
+        return c.json({ erro: 'Conflito de edição' }, 409);
+      return c.json({ revisao: novo.revisao });
+    } catch (e) {
+      const erro = erroDominio(e);
+      return c.json({ erro: erro.mensagem }, erro.status);
+    }
   });
 
   app.get('/competencias/:id/consolidacao', async c => {

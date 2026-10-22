@@ -27,6 +27,8 @@ function ambiente(sessao: SessaoOperacional | null = null, conflito = false) {
     },
     funcionariosAtivos: async () => new Set(['v1']),
     nomesExportacao: async () => ({ empresas: { e1: 'Odontoart Exemplo' }, setores: { s1: 'Atendimento' } }),
+    listarCompetencias: async () => [{ id: '1', ano: 2026, mes: 10, revisao: estado.revisao }],
+    abrirNovaCompetencia: async (ano, mes) => ({ id: 'nova', ano, mes, revisao: 0 }),
   });
   return { app, consultar: () => estado };
 }
@@ -36,6 +38,7 @@ const central = { usuarioId: 'central-exemplo', perfil: 'CENTRAL' as const };
 describe('Rotas operacionais protegidas, sem banco real', () => {
   it('nega por padrão todo acesso sem sessão', async () => {
     const a = ambiente();
+    expect((await a.app.request('http://localhost/api/competencias')).status).toBe(401);
     const r = await a.app.request('http://localhost/api/competencias/1/consolidacao');
     expect(r.status).toBe(401);
     const x = await a.app.request('http://localhost/api/competencias/1/exportacao.xlsx');
@@ -52,6 +55,24 @@ describe('Rotas operacionais protegidas, sem banco real', () => {
     expect((await a.app.request('http://localhost/api/competencias/1/consolidacao')).status).toBe(403);
     expect((await a.app.request('http://localhost/api/competencias/1/exportacao.xlsx')).status).toBe(403);
     expect((await ambiente(central).app.request('http://localhost/api/competencias/1/comissoes/g1')).status).toBe(403);
+  });
+  it('DP abre competência, lista meses e ADM não altera vínculos', async () => {
+    const admin = ambiente(dp);
+    const lista = await admin.app.request('http://localhost/api/competencias');
+    expect(lista.status).toBe(200);
+    const nova = await admin.app.request('http://localhost/api/competencias', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ano: 2026, mes: 11 }),
+    });
+    expect(nova.status).toBe(201);
+    const setor = ambiente(adm);
+    expect((await setor.app.request('http://localhost/api/competencias')).status).toBe(403);
+    const bloqueada = await setor.app.request('http://localhost/api/competencias/1/vinculos', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ funcionarioId: 'v1', campoId: 'c1',
+        vinculado: false, versaoEsperada: 0 }),
+    });
+    expect(bloqueada.status).toBe(403);
   });
   it('ADM lança zero, conclui sua comissão e fica bloqueado', async () => {
     const a = ambiente(adm);

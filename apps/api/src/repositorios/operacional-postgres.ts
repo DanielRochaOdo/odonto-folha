@@ -243,5 +243,110 @@ export function criarRepositorioPostgres(
       setores: Object.fromEntries(setores.map(s => [s.id, s.nome])),
     };
   }
-  return { buscarCompetencia, salvarSeRevisao, funcionariosAtivos, nomesExportacao };
+  async function listarCompetencias() {
+    const registros = await db.select({
+      id: t.competencias.id,
+      ano: t.competencias.ano,
+      mes: t.competencias.mes,
+      revisao: t.competencias.revisao,
+    }).from(t.competencias)
+      .orderBy(desc(t.competencias.ano), desc(t.competencias.mes));
+    return registros;
+  }
+
+  /**
+   * Abertura do mês é indivisível: fotografia salarial, colunas existentes,
+   * vínculos do mês anterior e comissões novas pendentes. Nunca copia valores
+   * de comissões anteriores. Bases de benefício ficam versionadas em tabela própria.
+   */
+  async function abrirNovaCompetencia(ano: number, mes: number, autorId: string) {
+    return db.transaction(async tx => {
+      const [nova] = await tx.insert(t.competencias)
+        .values({ ano, mes, criadaPor: autorId, revisao: 0 })
+        .onConflictDoNothing({ target: [t.competencias.ano, t.competencias.mes] })
+        .returning({ id: t.competencias.id });
+      if (!nova) return null;
+
+      const atual = ano * 12 + mes;
+      const [vinculosAtivos, movimentos, camposAtivos, grupos, meses] = await Promise.all([
+        tx.select({
+          vinculo: t.vinculosEmpregaticios,
+          pessoa: t.pessoas,
+        }).from(t.vinculosEmpregaticios)
+          .innerJoin(t.pessoas, eq(t.vinculosEmpregaticios.pessoaId, t.pessoas.id))
+          .where(eq(t.vinculosEmpregaticios.ativo, true)),
+        tx.select().from(t.movimentacoesVinculo)
+          .orderBy(desc(t.movimentacoesVinculo.anoVigencia),
+            desc(t.movimentacoesVinculo.mesVigencia),
+            desc(t.movimentacoesVinculo.criadoEm)),
+        tx.select().from(t.camposDinamicos)
+          .where(eq(t.camposDinamicos.ativo, true)),
+        tx.select().from(t.gruposDinamicos)
+          .where(eq(t.gruposDinamicos.ativo, true)),
+        tx.select().from(t.competencias)
+          .orderBy(desc(t.competencias.ano), desc(t.competencias.mes)),
+      ]);
+      const contratos = vinculosAtivos.filter(({ vinculo }) =>
+        Number(vinculo.admissao.slice(0, 4)) * 12 +
+        Number(vinculo.admissao.slice(5, 7)) <= atual);
+      for (const { vinculo, pessoa } of contratos) {
+        const movimento = movimentos.find(m => m.vinculoId === vinculo.id &&
+          m.anoVigencia * 12 + m.mesVigencia <= atual);
+        await tx.insert(t.funcionariosCompetencia).values({
+          competenciaId: nova.id, vinculoId: vinculo.id, cpf: pessoa.cpf,
+          nome: pessoa.nome, admissao: vinculo.admissao,
+          empresaContratanteId: movimento?.empresaContratanteId ?? vinculo.empresaContratanteId,
+          empresaLotadoId: movimento?.empresaLotadoId ?? vinculo.empresaLotadoId,
+          setorLotacaoId: movimento?.setorLotacaoId ?? vinculo.setorLotacaoId,
+          cargo: movimento?.cargo ?? vinculo.cargo,
+          salarioContratual: movimento?.salarioContratual ?? vinculo.salarioContratual,
+        });
+      }
+      const grupoPorId = new Map(grupos.map(g => [g.id, g]));
+      const campos = camposAtivos.filter(c => grupoPorId.has(c.grupoId) &&
+        c.anoCriacao * 12 + c.mesCriacao <= atual);
+      for (const campo of campos) {
+        await tx.insert(t.camposCompetencia).values({
+          competenciaId: nova.id, campoId: campo.id,
+          visivelHistorico: true, edicaoBloqueada: false,
+        });
+      }
+      const camposIds = new Set(campos.map(c => c.id));
+      const funcionariosIds = new Set(contratos.map(v => v.vinculo.id));
+      const anterior = meses.find(m => m.id !== nova.id &&
+        m.ano * 12 + m.mes < atual);
+      if (anterior) {
+        const copiados = await tx.select().from(t.vinculosCamposCompetencia)
+          .where(and(eq(t.vinculosCamposCompetencia.competenciaId, anterior.id),
+            eq(t.vinculosCamposCompetencia.ativo, true)));
+        for (const vinculo of copiados) {
+          if (!camposIds.has(vinculo.campoId) || !funcionariosIds.has(vinculo.vinculoId))
+            continue;
+          await tx.insert(t.vinculosCamposCompetencia).values({
+            competenciaId: nova.id, vinculoId: vinculo.vinculoId,
+            campoId: vinculo.campoId, ativo: true,
+          });
+        }
+      }
+      const gruposComissao = new Set(campos.flatMap(c =>
+        grupoPorId.get(c.grupoId)?.origem === 'COMISSAO' ? [c.grupoId] : []));
+      for (const grupoId of gruposComissao) {
+        const grupo = grupoPorId.get(grupoId);
+        if (!grupo) continue;
+        await tx.insert(t.enviosComissoes).values({
+          competenciaId: nova.id, grupoId,
+          responsavel: grupo.responsavel,
+          concluido: false, concluidoEm: null, concluidoPor: null,
+        });
+      }
+      await tx.insert(t.auditoria).values({
+        usuarioId: autorId, competenciaId: nova.id,
+        entidade: 'COMPETENCIA', entidadeId: nova.id, acao: 'COMPETENCIA_ABERTA',
+      });
+      return { id: nova.id, ano, mes, revisao: 0 };
+    });
+  }
+
+  return { buscarCompetencia, salvarSeRevisao, funcionariosAtivos, nomesExportacao,
+    listarCompetencias, abrirNovaCompetencia };
 }
