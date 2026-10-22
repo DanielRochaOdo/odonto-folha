@@ -34,7 +34,8 @@ export const vinculosEmpregaticios = pgTable('vinculos_empregaticios', {
   ativo: boolean('ativo').notNull().default(true),
   criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
 }, t => [index('vinculos_pessoa_idx').on(t.pessoaId),
-  check('vinculos_salario_valido', sql.raw('salario_contratual >= 0'))]);
+  check('vinculos_salario_valido', sql.raw('salario_contratual >= 0')),
+  uniqueIndex('vinculo_ativo_pessoa_unico').on(t.pessoaId).where(sql`${t.ativo} = true`)]);
 export const movimentacoesVinculo = pgTable('movimentacoes_vinculo', {
   id: uuid('id').defaultRandom().primaryKey(),
   vinculoId: uuid('vinculo_id').notNull().references(() => vinculosEmpregaticios.id),
