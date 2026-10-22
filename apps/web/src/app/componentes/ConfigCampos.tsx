@@ -17,6 +17,12 @@ type Dados = {
 };
 type Funcionario = { id: string; nome: string; ativo: boolean };
 type Cadastro = { funcionarios: Funcionario[] };
+type BasesBeneficio = {
+  versao: number;
+  campos: { id: string; nome: string; tipo: string }[];
+  funcionarios: { id: string; nome: string; ativo: boolean;
+    valores: Record<string, number | string | null> }[];
+};
 type Passo = 1 | 2 | 3;
 
 const inicio: Dados = {
@@ -74,6 +80,17 @@ export default function ConfigCampos() {
   const [aviso, setAviso] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [basesAbertas, setBasesAbertas] = useState(false);
+  const [bases, setBases] = useState<BasesBeneficio | null>(null);
+  const [vigenciaBases, setVigenciaBases] = useState(mesAtual);
+  const [valoresBases, setValoresBases] = useState<Record<string, string>>({});
+  const [valoresBasesOriginais, setValoresBasesOriginais] = useState<Record<string, string>>({});
+  const [carregandoBases, setCarregandoBases] = useState(false);
+  const [erroBases, setErroBases] = useState('');
+  const [avisoBases, setAvisoBases] = useState('');
+  const [vinculosAbertos, setVinculosAbertos] = useState(false);
+  const [selecionadosParaVincular, setSelecionadosParaVincular] = useState<string[]>([]);
+  const [buscaVinculos, setBuscaVinculos] = useState('');
   const dialogoRef = useRef<HTMLDivElement>(null);
   const gatilhoRef = useRef<HTMLButtonElement>(null);
 
@@ -110,6 +127,116 @@ export default function ConfigCampos() {
     }));
   }
 
+  const chaveBase = (funcionarioId: string, campoId: string) => funcionarioId + ':' + campoId;
+
+  async function carregarBasesBeneficio(id: string, competenciaMes: string): Promise<boolean> {
+    setCarregandoBases(true);
+    setErroBases('');
+    setAvisoBases('');
+    try {
+      const resposta = await fetch('/api/configuracao/grupos/' + encodeURIComponent(id) +
+        '/bases-beneficios?competencia=' + encodeURIComponent(competenciaMes),
+      { credentials: 'include', cache: 'no-store' });
+      await lerResposta(resposta);
+      const resultado = await resposta.json() as BasesBeneficio;
+      const valores = Object.fromEntries(resultado.funcionarios.flatMap(funcionario =>
+        resultado.campos.map(campo => [chaveBase(funcionario.id, campo.id),
+          funcionario.valores[campo.id] === null ? '' : String(funcionario.valores[campo.id])])));
+      setBases(resultado);
+      setValoresBases(valores);
+      setValoresBasesOriginais(valores);
+      return true;
+    } catch (e) {
+      setErroBases(mensagemErro(e));
+      setBases(null);
+      setValoresBases({});
+      setValoresBasesOriginais({});
+      return false;
+    } finally {
+      setCarregandoBases(false);
+    }
+  }
+
+  async function salvarBasesBeneficio() {
+    if (!grupoSelecionado || !bases || ocupado) return;
+    let invalido = false;
+    const valores: { funcionarioId: string; campoId: string; valor: number | string }[] = [];
+    for (const funcionario of bases.funcionarios) {
+      for (const campo of bases.campos) {
+        const chave = chaveBase(funcionario.id, campo.id);
+        const valor = valoresBases[chave]?.trim() ?? '';
+        if (!valor || valor === (valoresBasesOriginais[chave] ?? '')) continue;
+        if (campo.tipo === 'moeda' || campo.tipo === 'percentual') {
+          const numero = Number(valor);
+          if (!Number.isFinite(numero) || (campo.tipo === 'moeda' && numero < 0)) {
+            invalido = true;
+            continue;
+          }
+          valores.push({ funcionarioId: funcionario.id, campoId: campo.id, valor: numero });
+        } else {
+          valores.push({ funcionarioId: funcionario.id, campoId: campo.id, valor });
+        }
+      }
+    }
+    if (invalido) {
+      setErroBases('Confira os valores numéricos. Moeda não pode ser negativa.');
+      return;
+    }
+    if (!valores.length) {
+      setAvisoBases('Nenhum valor novo para salvar.');
+      return;
+    }
+    setOcupado(true);
+    setErroBases('');
+    setAvisoBases('');
+    try {
+      const resposta = await enviar('/api/configuracao/grupos/' +
+        encodeURIComponent(grupoSelecionado.id) + '/bases-beneficios', {
+        competencia: vigenciaBases, versaoEsperada: bases.versao, valores,
+      });
+      const resultado = await resposta.json() as { salvos: number };
+      const atualizado = await carregarBasesBeneficio(grupoSelecionado.id, vigenciaBases);
+      if (!atualizado) return;
+      setAvisoBases(resultado.salvos
+        ? `${resultado.salvos} valor(es) recorrente(s) atualizado(s) a partir de ${mesNome(vigenciaBases)}.`
+        : 'Os valores já estavam atualizados.');
+    } catch (e) {
+      setErroBases(mensagemErro(e));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function vincularFuncionariosBeneficio() {
+    if (!grupoSelecionado || !selecionadosParaVincular.length || ocupado) return;
+    setOcupado(true);
+    setErro('');
+    setAviso('');
+    try {
+      const resposta = await enviar('/api/configuracao/grupos/' +
+        encodeURIComponent(grupoSelecionado.id) + '/funcionarios', {
+        funcionariosIds: selecionadosParaVincular,
+      });
+      const resultado = await resposta.json() as { vinculados: number };
+      setVinculosAbertos(false);
+      setSelecionadosParaVincular([]);
+      setBuscaVinculos('');
+      await carregar();
+      if (basesAbertas) await carregarBasesBeneficio(grupoSelecionado.id, vigenciaBases);
+      setAviso(`${resultado.vinculados} funcionário(s) vinculado(s) permanentemente ao benefício.`);
+    } catch (e) {
+      setErro(mensagemErro(e));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  function mesNome(valor: string) {
+    const [ano, mes] = valor.split('-').map(Number);
+    return new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+      .format(new Date(Date.UTC(ano, mes - 1, 1)));
+  }
+
   function fecharCriacao() {
     if (ocupado) return;
     setCriacaoAberta(false);
@@ -134,9 +261,12 @@ export default function ConfigCampos() {
   }
 
   function mudarAba(proxima: Origem) {
-    if (proxima === aba || ocupado) return;
+    if (proxima === aba || ocupado || carregandoBases) return;
     setAba(proxima);
     setGrupoId('');
+    setBasesAbertas(false);
+    setBases(null);
+    setVinculosAbertos(false);
     setCampoAberto(false);
     setCriacaoAberta(false);
     setNomeCampo('');
@@ -270,6 +400,8 @@ export default function ConfigCampos() {
     item.nome.toLocaleLowerCase('pt-BR').includes(buscaFuncionario.toLocaleLowerCase('pt-BR')));
   const idsVinculados = dados.funcionariosPorGrupo[grupoId] ?? [];
   const vinculados = funcionarios.filter(item => idsVinculados.includes(item.id));
+  const disponiveisParaVincular = funcionarios.filter(item => !idsVinculados.includes(item.id) &&
+    item.nome.toLocaleLowerCase('pt-BR').includes(buscaVinculos.toLocaleLowerCase('pt-BR')));
 
   return (
     <section className="painel-app configuracao-campos">
@@ -283,6 +415,7 @@ export default function ConfigCampos() {
           <button key={item} type="button" id={'aba-' + item.toLowerCase()}
             role="tab" aria-selected={aba === item} aria-controls="painel-configuracao"
             className={'aba-configuracao' + (aba === item ? ' selecionada' : '')}
+            disabled={ocupado || carregandoBases}
             onClick={() => mudarAba(item)}>
             {informacoes[item].titulo}
           </button>
@@ -320,10 +453,16 @@ export default function ConfigCampos() {
                 {grupos.map(item => (
                   <button key={item.id} type="button"
                     className={'config-grupo' + (grupoId === item.id ? ' ativo' : '')}
+                    disabled={ocupado || carregandoBases}
                     aria-expanded={grupoId === item.id}
                     aria-controls="config-detalhes"
                     onClick={() => {
                       setGrupoId(atual => atual === item.id ? '' : item.id);
+                      setBasesAbertas(false);
+                      setBases(null);
+                      setVinculosAbertos(false);
+                      setSelecionadosParaVincular([]);
+                      setBuscaVinculos('');
                       setCampoAberto(false);
                       setNomeCampo('');
                       setErro('');
@@ -403,7 +542,20 @@ export default function ConfigCampos() {
                 )}
 
                 <div className="config-lista-vinculados">
-                  <h5>Funcionários vinculados <span>({vinculados.length})</span></h5>
+                  <div className="config-titulo-detalhes">
+                    <h5>Funcionários vinculados <span>({vinculados.length})</span></h5>
+                    {grupoSelecionado.origem === 'BENEFICIO' && (
+                      <button type="button" className="botao-secundario" disabled={ocupado}
+                        aria-expanded={vinculosAbertos}
+                        onClick={() => {
+                          setVinculosAbertos(atual => !atual);
+                          setSelecionadosParaVincular([]);
+                          setBuscaVinculos('');
+                        }}>
+                        {vinculosAbertos ? 'Fechar seleção' : 'Adicionar funcionários'}
+                      </button>
+                    )}
+                  </div>
                   {vinculados.length === 0 ? (
                     <p className="config-sem-vinculos">Nenhum funcionário vinculado a este cadastro.</p>
                   ) : (
@@ -411,7 +563,136 @@ export default function ConfigCampos() {
                       <li key={item.id}>{item.nome}{!item.ativo ? ' (inativo)' : ''}</li>
                     ))}</ul>
                   )}
+                  {vinculosAbertos && grupoSelecionado.origem === 'BENEFICIO' && (
+                    <div className="config-aviso-vinculos">
+                      <label htmlFor="busca-funcionarios-beneficio">Buscar funcionário
+                        <input id="busca-funcionarios-beneficio" value={buscaVinculos}
+                          onChange={evento => setBuscaVinculos(evento.target.value)}
+                          placeholder="Digite um nome" />
+                      </label>
+                      <div className="config-selecao-todos">
+                        <span>{selecionadosParaVincular.length} selecionado(s)</span>
+                        <button type="button" className="botao-secundario"
+                          onClick={() => setSelecionadosParaVincular(atual =>
+                            [...new Set([...atual, ...disponiveisParaVincular.map(f => f.id)])])}>
+                          Selecionar visíveis
+                        </button>
+                        <button type="button" className="botao-secundario"
+                          onClick={() => setSelecionadosParaVincular([])}>Limpar seleção</button>
+                      </div>
+                      <div className="config-checklist">
+                        {disponiveisParaVincular.map(item => (
+                          <label key={item.id} className="config-item-funcionario">
+                            <input type="checkbox" checked={selecionadosParaVincular.includes(item.id)}
+                              onChange={evento => setSelecionadosParaVincular(atual => evento.target.checked
+                                ? [...atual, item.id] : atual.filter(id => id !== item.id))} />
+                            <span>{item.nome}{item.ativo ? '' : ' (inativo)'}</span>
+                          </label>
+                        ))}
+                        {disponiveisParaVincular.length === 0 && (
+                          <p className="config-sem-vinculos">Não há funcionários disponíveis nesta busca.</p>
+                        )}
+                      </div>
+                      <div className="config-acoes-form">
+                        <button type="button" className="botao-secundario" disabled={ocupado}
+                          onClick={() => setVinculosAbertos(false)}>Cancelar</button>
+                        <button type="button" className="acao-principal" disabled={ocupado || !selecionadosParaVincular.length}
+                          onClick={() => void vincularFuncionariosBeneficio()}>
+                          {ocupado ? 'Salvando...' : 'Vincular selecionados'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
+
+                {grupoSelecionado.origem === 'BENEFICIO' && (
+                  <section className="config-bases-beneficio" aria-label="Valores recorrentes por funcionário">
+                    <div className="config-titulo-detalhes">
+                      <div>
+                        <h4>Valores recorrentes por funcionário</h4>
+                        <p>Defina um valor próprio para cada funcionário e campo, com início por competência.</p>
+                      </div>
+                      <button type="button" className="botao-secundario" disabled={ocupado}
+                        aria-expanded={basesAbertas}
+                        onClick={() => {
+                          const abrir = !basesAbertas;
+                          setBasesAbertas(abrir);
+                          if (abrir) void carregarBasesBeneficio(grupoSelecionado.id, vigenciaBases);
+                        }}>
+                        {basesAbertas ? 'Fechar valores' : 'Configurar valores'}
+                      </button>
+                    </div>
+                    {basesAbertas && (
+                      <div className="config-editor-bases">
+                        <label htmlFor="config-vigencia-bases">Válidos a partir da competência
+                          <input id="config-vigencia-bases" type="month" required
+                            value={vigenciaBases}
+                            disabled={ocupado || carregandoBases}
+                            onChange={evento => {
+                              const valor = evento.target.value;
+                              setVigenciaBases(valor);
+                              if (/^\d{4}-(0[1-9]|1[0-2])$/.test(valor))
+                                void carregarBasesBeneficio(grupoSelecionado.id, valor);
+                            }} />
+                        </label>
+                        <p className="config-ajuda-bases">
+                          Cada valor será recorrente desde esse mês. Uma célula vazia não altera uma base existente;
+                          informe 0 para registrar zero explicitamente. A exceção de um único mês continua na Consolidação.
+                        </p>
+                        {erroBases && <p className="erro" role="alert">{erroBases}</p>}
+                        {avisoBases && <p className="feedback" role="status">{avisoBases}</p>}
+                        {carregandoBases ? (
+                          <p className="config-vazio">Carregando valores...</p>
+                        ) : !bases ? null : bases.campos.length === 0 ? (
+                          <p className="config-sem-vinculos">Este benefício ainda não tem campos ativos.</p>
+                        ) : bases.funcionarios.length === 0 ? (
+                          <p className="config-sem-vinculos">Vincule funcionários ao benefício para configurar valores.</p>
+                        ) : (
+                          <>
+                            <div className="rolagem-tabela">
+                              <table className="tabela-principal tabela-bases-beneficio">
+                                <thead><tr><th scope="col">Funcionário</th>
+                                  {bases.campos.map(campo => <th scope="col" key={campo.id}>
+                                    {campo.nome}<span>{campo.tipo}</span>
+                                  </th>)}
+                                </tr></thead>
+                                <tbody>{bases.funcionarios.map(funcionario => (
+                                  <tr key={funcionario.id}>
+                                    <td className="nome-pessoa">{funcionario.nome}{funcionario.ativo ? '' : ' (inativo)'}</td>
+                                    {bases.campos.map(campo => {
+                                      const chave = chaveBase(funcionario.id, campo.id);
+                                      const tipoEntrada = campo.tipo === 'data' ? 'date'
+                                        : campo.tipo === 'horario' ? 'time'
+                                          : campo.tipo === 'moeda' || campo.tipo === 'percentual' ? 'number' : 'text';
+                                      return <td key={campo.id}>
+                                        <input className="editor-valor-base" type={tipoEntrada}
+                                          step={tipoEntrada === 'number' ? '0.01' : undefined}
+                                          min={campo.tipo === 'moeda' ? '0' : undefined}
+                                          aria-label={`${campo.nome} para ${funcionario.nome}`}
+                                          value={valoresBases[chave] ?? ''}
+                                          disabled={ocupado || carregandoBases}
+                                          onChange={evento => setValoresBases(atual => ({
+                                            ...atual, [chave]: evento.target.value,
+                                          }))} />
+                                      </td>;
+                                    })}
+                                  </tr>
+                                ))}</tbody>
+                              </table>
+                            </div>
+                            <div className="config-acoes-form">
+                              <button type="button" className="acao-principal"
+                                disabled={ocupado || carregandoBases}
+                                onClick={() => void salvarBasesBeneficio()}>
+                                {ocupado ? 'Salvando...' : 'Salvar valores recorrentes'}
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </section>
+                )}
 
                 <div className="config-tabela-titulo">
                   <h4>Campos de {grupoSelecionado.nome}</h4>

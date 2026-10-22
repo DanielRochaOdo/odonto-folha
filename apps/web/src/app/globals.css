@@ -173,3 +173,20 @@
   .config-checklist{grid-template-columns:1fr}
   .config-titulo-detalhes .acao-principal{width:100%}
 }
+.config-bases-beneficio{margin:22px 0;padding:18px;border:1px solid var(--linha);
+  border-radius:11px;background:var(--fundo)}
+.config-bases-beneficio .config-titulo-detalhes{margin:0 0 14px}
+.config-editor-bases>label{display:flex;flex-direction:column;gap:7px;max-width:250px;
+  font-size:12px;font-weight:700}
+.config-editor-bases>label input{padding:10px;border:1px solid var(--linha);
+  border-radius:8px;background:var(--superficie);color:var(--texto)}
+.config-aviso-vinculos>label{display:flex;flex-direction:column;gap:7px;max-width:360px;
+  font-size:12px;font-weight:700}
+.config-aviso-vinculos>label input{padding:10px;border:1px solid var(--linha);
+  border-radius:8px;background:var(--superficie);color:var(--texto)}
+.config-ajuda-bases{font-size:12px;margin:12px 0}
+.tabela-bases-beneficio{min-width:max-content}
+.tabela-bases-beneficio td:first-child{position:sticky;left:0;background:var(--superficie);z-index:1}
+.editor-valor-base{width:145px;max-width:100%;padding:9px;border:1px solid var(--linha);
+  border-radius:7px;background:var(--superficie);color:var(--texto)}
+.config-bases-beneficio .config-acoes-form{justify-content:flex-end}

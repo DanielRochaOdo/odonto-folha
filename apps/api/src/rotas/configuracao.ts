@@ -17,6 +17,20 @@ const campoSchema = z.object({
   mes: z.number().int().min(1).max(12),
 }).strict();
 const statusSchema = z.object({ ativo: z.boolean() }).strict();
+const competenciaMes = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+  .refine(valor => Number(valor.slice(0, 4)) >= 2000 && Number(valor.slice(0, 4)) <= 2200);
+const basesBeneficioSchema = z.object({
+  competencia: competenciaMes,
+  versaoEsperada: z.number().int().nonnegative(),
+  valores: z.array(z.object({
+    funcionarioId: uuid,
+    campoId: uuid,
+    valor: z.union([z.number().finite(), z.string().min(1)]),
+  }).strict()).min(1).max(10000),
+}).strict();
+const vinculosBeneficioSchema = z.object({
+  funcionariosIds: z.array(uuid).min(1).max(10000),
+}).strict();
 
 const criacaoCompletaSchema = z.object({
   nome, origem: z.enum(['BENEFICIO', 'COMISSAO']),
@@ -48,6 +62,52 @@ export function criarRotasConfiguracao(
 
   app.get('/configuracao/campos', async c =>
     c.json(await deps.configuracao.listar()));
+
+  app.get('/configuracao/grupos/:id/bases-beneficios', async c => {
+    const id = uuid.safeParse(c.req.param('id'));
+    const competencia = competenciaMes.safeParse(c.req.query('competencia'));
+    if (!id.success || !competencia.success)
+      return c.json({ erro: 'Informe um benefício e uma competência válidos' }, 400);
+    const [ano, mes] = competencia.data.split('-').map(Number);
+    const dados = await deps.configuracao.listarBasesBeneficio(id.data, ano, mes);
+    return dados ? c.json(dados) : c.json({ erro: 'Benefício inexistente' }, 404);
+  });
+
+  app.post('/configuracao/grupos/:id/bases-beneficios', async c => {
+    const id = uuid.safeParse(c.req.param('id'));
+    const body = basesBeneficioSchema.safeParse(await c.req.json().catch(() => null));
+    if (!id.success || !body.success)
+      return c.json({ erro: 'Informe valores e vigência válidos' }, 400);
+    const [ano, mes] = body.data.competencia.split('-').map(Number);
+    try {
+      const resultado = await deps.configuracao.salvarBasesBeneficio(
+        id.data, ano, mes, body.data.valores,
+        body.data.versaoEsperada, c.get('sessao').usuarioId,
+      );
+      return c.json(resultado);
+    } catch (e) {
+      const mensagem = e instanceof Error ? e.message : '';
+      const conflito = mensagem.startsWith('Conflito:');
+      return c.json({ erro: conflito
+        ? 'Os valores foram alterados por outra pessoa. Atualize a grade.'
+        : mensagem || 'Não foi possível salvar os valores recorrentes.' }, conflito ? 409 : 400);
+    }
+  });
+
+  app.post('/configuracao/grupos/:id/funcionarios', async c => {
+    const id = uuid.safeParse(c.req.param('id'));
+    const body = vinculosBeneficioSchema.safeParse(await c.req.json().catch(() => null));
+    if (!id.success || !body.success)
+      return c.json({ erro: 'Selecione pelo menos um funcionário cadastrado' }, 400);
+    try {
+      return c.json(await deps.configuracao.vincularFuncionariosBeneficio(
+        id.data, body.data.funcionariosIds, c.get('sessao').usuarioId,
+      ));
+    } catch (e) {
+      const mensagem = e instanceof Error ? e.message : '';
+      return c.json({ erro: mensagem || 'Não foi possível vincular os funcionários.' }, 400);
+    }
+  });
 
 
   app.post('/configuracao/criacao', async c => {
