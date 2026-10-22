@@ -36,8 +36,13 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
       if (!ids.includes(associado.vinculoId)) ids.push(associado.vinculoId);
       porGrupo[associado.grupoId] = ids;
     }
+    const elegiveis = referencia ? await db.select({
+      id: t.funcionariosCompetencia.vinculoId,
+    }).from(t.funcionariosCompetencia)
+      .where(eq(t.funcionariosCompetencia.competenciaId, referencia.id)) : [];
     return {
       grupos, campos, funcionariosPorGrupo: porGrupo,
+      funcionariosElegiveisIds: elegiveis.map(f => f.id),
       competenciaReferencia: referencia
         ? { ano: referencia.ano, mes: referencia.mes } : null,
     };
