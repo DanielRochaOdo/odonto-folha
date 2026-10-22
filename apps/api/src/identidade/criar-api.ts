@@ -3,6 +3,8 @@ import { healthSchema } from '@odontofolha/contracts';
 import type { AmbienteApi } from '../config/ambiente';
 import { criarIdentidade } from './auth';
 import { criarRepositorioPostgres } from '../repositorios/operacional-postgres';
+import { criarCadastroPostgres } from '../repositorios/cadastros-postgres';
+import { criarRotasCadastros } from '../rotas/cadastros';
 import { criarRotasOperacionais } from '../rotas/operacionais';
 
 /**
@@ -33,5 +35,9 @@ export function criarAplicacaoAutenticada(ambiente: AmbienteApi) {
     autenticar: identidade.autenticar,
   });
   aplicacao.route('/', operacionais);
+  aplicacao.route('/', criarRotasCadastros({
+    cadastro: criarCadastroPostgres(identidade.conexao),
+    autenticar: identidade.autenticar,
+  }));
   return { aplicacao, identidade };
 }
