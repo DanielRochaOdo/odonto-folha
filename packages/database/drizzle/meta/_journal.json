@@ -8,6 +8,13 @@
       "when": 1792679213495,
       "tag": "0000_bright_omega_flight",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792685400000,
+      "tag": "0001_vinculos_grupos",
+      "breakpoints": true
     }
   ]
 }
