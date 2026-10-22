@@ -42,8 +42,15 @@ export default function PaginaInicial() {
   const [func, setFunc] = useState({ nome: '', cpf: '', cargo: '', contratante: '', lotado: '', setor: '', admissao: '', salario: '' });
   const [campo, setCampo] = useState({ nome: '', natureza: 'Provento' as 'Provento' | 'Desconto' });
   useEffect(() => {
-    try { const salvo = localStorage.getItem(CHAVE); if (salvo) setDados(JSON.parse(salvo) as Dados); } catch { /* dados locais inválidos: manter demonstração */ }
-    setCarregado(true);
+    // Hidratação assíncrona: evita atualizar estado durante o próprio efeito.
+    const tarefa = window.setTimeout(() => {
+      try {
+        const salvo = localStorage.getItem(CHAVE);
+        if (salvo) setDados(JSON.parse(salvo) as Dados);
+      } catch { /* dados locais inválidos: manter demonstração */ }
+      setCarregado(true);
+    }, 0);
+    return () => window.clearTimeout(tarefa);
   }, []);
   useEffect(() => { if (carregado) localStorage.setItem(CHAVE, JSON.stringify(dados)); }, [dados, carregado]);
   const ativos = useMemo(() => dados.funcionarios.filter(f => f.ativo && (f.nome + f.cpf + f.setor).toLowerCase().includes(busca.toLowerCase())), [dados.funcionarios, busca]);
