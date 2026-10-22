@@ -53,6 +53,29 @@ jobs:
         run: |
           mkdir -p apps/api/migrations
           pnpm dlx auth@1.7.7 generate --yes --config apps/api/auth.config.ts --output apps/api/migrations/0000_auth.sql
+      - name: Validar SQL versionado em PostgreSQL efêmero (NUNCA Neon)
+        run: |
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f packages/database/drizzle/0000_bright_omega_flight.sql
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f apps/api/migrations/0000_auth.sql
+      - name: Exercitar bootstrap ADMIN somente com identidade sintética
+        env:
+          ODONTOFOLHA_ADMIN_PASSWORD: SenhaSintetica-CI-2026-Exclusiva
+        run: |
+          pnpm --filter @odontofolha/api exec node --import tsx scripts/criar-admin.ts admin-sintetico@example.invalid
+          psql "$DIRECT_URL" -tAc 'SELECT count(*) FROM usuarios_perfis WHERE perfil = '"'"'ADMIN'"'"' AND ativo = true' | grep -q '^1
+        run: |
+          find packages/database/drizzle apps/api/migrations -type f | sort | while read -r file; do
+            echo "ODONTOFILE_BEGIN:$file"
+            base64 -w0 "$file" | fold -w 3000 | sed 's/^/ODONTO_CHUNK:/'
+            echo "ODONTOFILE_END:$file"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql-inicial-sintetico
+          path: |
+            packages/database/drizzle/
+            apps/api/migrations/
+
       - name: Mostrar artefatos SQL para incorporação versionada
         run: |
           find packages/database/drizzle apps/api/migrations -type f | sort | while read -r file; do
