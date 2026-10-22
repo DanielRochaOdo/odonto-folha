@@ -1,5 +1,24 @@
 {
   "name": "@odontofolha/database",
   "version": "0.1.0",
-  "private": true
+  "private": true,
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "node -e \"console.log('Testes transacionais aguardam banco isolado')\""
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.4",
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.11",
+    "@types/pg": "8.15.5",
+    "@odontofolha/tsconfig": "workspace:*"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  }
 }

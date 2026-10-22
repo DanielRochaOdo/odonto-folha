@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@odontofolha/contracts": "workspace:*",
-    "hono": "^4.10.0"
+    "hono": "^4.10.0",
+    "@odontofolha/database": "workspace:*",
+    "better-auth": "1.7.7"
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.0",
