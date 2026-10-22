@@ -46,7 +46,7 @@ function erroDominio(e: unknown): { status: 400 | 403 | 409; mensagem: string } 
 
 /** Rotas só são montadas depois de conectar Better Auth e repositório transacional. */
 export function criarRotasOperacionais(deps: DependenciasOperacionais) {
-  const app = new Hono().basePath('/api');
+  const app = new Hono<{ Variables: { sessao: SessaoOperacional } }>().basePath('/api');
   app.use('/competencias/*', async (c, proximo) => {
     const sessao = await deps.autenticar(c.req.raw.headers);
     if (!sessao) return c.json({ erro: 'Sessão necessária' }, 401);
