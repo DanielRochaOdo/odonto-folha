@@ -91,6 +91,7 @@ export const camposCompetencia = pgTable('campos_competencia', {
   competenciaId: uuid('competencia_id').notNull().references(() => competencias.id),
   campoId: uuid('campo_id').notNull().references(() => camposDinamicos.id),
   visivelHistorico: boolean('visivel_historico').notNull().default(true),
+  edicaoBloqueada: boolean('edicao_bloqueada').notNull().default(false),
 }, t => [primaryKey({ columns: [t.competenciaId, t.campoId] })]);
 export const vinculosCamposCompetencia = pgTable('vinculos_campos_competencia', {
   competenciaId: uuid('competencia_id').notNull().references(() => competencias.id),
