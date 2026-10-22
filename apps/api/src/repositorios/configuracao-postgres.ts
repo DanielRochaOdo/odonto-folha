@@ -1,4 +1,4 @@
-import { and, desc, eq, tabelas, type ConexaoFolha } from '@odontofolha/database';
+import { and, desc, eq, sql, tabelas, type ConexaoFolha } from '@odontofolha/database';
 
 type Origem = 'BENEFICIO' | 'COMISSAO';
 type Responsavel = 'ADM' | 'CENTRAL' | 'NENHUM';
@@ -117,6 +117,9 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
             competenciaId: competencia.id, vinculoId: id, campoId: campo.id, ativo: true,
           }).onConflictDoNothing();
         }
+        await tx.update(t.competencias)
+          .set({ revisao: sql`${t.competencias.revisao} + 1` })
+          .where(eq(t.competencias.id, competencia.id));
       }
       await tx.insert(t.auditoria).values([
         { usuarioId: autor, entidade: 'GRUPO', entidadeId: grupo.id, acao: 'CRIADO' },
@@ -160,6 +163,9 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
             competenciaId: competencia.id, campoId: c.id, vinculoId: id, ativo: true,
           }).onConflictDoNothing();
         }
+        await tx.update(t.competencias)
+          .set({ revisao: sql`${t.competencias.revisao} + 1` })
+          .where(eq(t.competencias.id, competencia.id));
       }
       await tx.insert(t.auditoria).values({
         usuarioId: autor, entidade: 'CAMPO', entidadeId: c.id, acao: 'CRIADO',
