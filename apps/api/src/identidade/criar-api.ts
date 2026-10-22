@@ -5,6 +5,8 @@ import { criarIdentidade } from './auth';
 import { criarRepositorioPostgres } from '../repositorios/operacional-postgres';
 import { criarCadastroPostgres } from '../repositorios/cadastros-postgres';
 import { criarRotasCadastros } from '../rotas/cadastros';
+import { criarConfiguracaoPostgres } from '../repositorios/configuracao-postgres';
+import { criarRotasConfiguracao } from '../rotas/configuracao';
 import { criarRotasOperacionais } from '../rotas/operacionais';
 
 /**
@@ -37,6 +39,10 @@ export function criarAplicacaoAutenticada(ambiente: AmbienteApi) {
   aplicacao.route('/', operacionais);
   aplicacao.route('/', criarRotasCadastros({
     cadastro: criarCadastroPostgres(identidade.conexao),
+    autenticar: identidade.autenticar,
+  }));
+  aplicacao.route('/', criarRotasConfiguracao({
+    configuracao: criarConfiguracaoPostgres(identidade.conexao),
     autenticar: identidade.autenticar,
   }));
   return { aplicacao, identidade };
