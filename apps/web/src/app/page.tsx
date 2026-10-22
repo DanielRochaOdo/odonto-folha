@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
 import Cadastros from './componentes/Cadastros';
 import ConfigCampos from './componentes/ConfigCampos';
+import PainelSetor from './componentes/PainelSetor';
 
 type Perfil = 'ADMIN' | 'DP' | 'ADM' | 'CENTRAL';
 type Sessao = { usuarioId: string; perfil: Perfil };
@@ -316,11 +317,7 @@ export default function PaginaInicial() {
           {erro && <p role="alert" className="erro alerta-app">{erro}</p>}
           {feedback && <p role="status" className="feedback">{feedback}</p>}
           {!permiteDp(sessao!.perfil) ? (
-            <section className="painel-app">
-              <h2>Comissões do setor {sessao!.perfil}</h2>
-              <p>Seu perfil está autenticado. A visualização setorial será liberada quando
-                os responsáveis e as competências estiverem configurados.</p>
-            </section>
+            <PainelSetor perfil={sessao!.perfil as 'ADM' | 'CENTRAL'}/>
           ) : aba === 'Cadastros' ? <Cadastros /> : aba === 'Configuração' ? <ConfigCampos /> : aba === 'Painel' ? (
             <>
               <div className="titulo-secao">
