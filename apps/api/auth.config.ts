@@ -11,4 +11,17 @@ import { validarAmbiente } from './src/config/ambiente';
 const raiz = fileURLToPath(new URL('../../.env', import.meta.url));
 if (existsSync(raiz)) loadEnvFile(raiz);
 
-export const auth = criarIdentidade(validarAmbiente(process.env)).auth;
+const ambiente = validarAmbiente(process.env);
+const direto = process.env.DIRECT_URL;
+if (!direto) {
+  throw new Error('DIRECT_URL obrigatório para CLI de migração Better Auth.');
+}
+const url = new URL(direto);
+if (!['postgres:', 'postgresql:'].includes(url.protocol) ||
+    url.hostname.includes('-pooler')) {
+  throw new Error('DIRECT_URL deve ser uma conexão direta do PostgreSQL.');
+}
+export const auth = criarIdentidade({
+  ...ambiente,
+  DATABASE_URL: direto,
+}).auth;

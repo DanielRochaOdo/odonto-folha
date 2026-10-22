@@ -33,6 +33,7 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:senha-sintetica-apenas-ci@localhost:5432/odontofolha
+      DIRECT_URL: postgresql://postgres:senha-sintetica-apenas-ci@localhost:5432/odontofolha
       BETTER_AUTH_SECRET: segredo-sintetico-temporario-apenas-para-ci-com-64-caracteres
       BETTER_AUTH_URL: http://localhost:3001
       WEB_ORIGIN: http://localhost:3000
