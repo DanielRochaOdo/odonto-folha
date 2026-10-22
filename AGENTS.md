@@ -13,4 +13,13 @@ Este arquivo é a porta de entrada de todo agente (incluindo Codex).
 9. Endpoints de negócio futuros devem exigir autenticação, autorização por escopo (empresa/unidade) e auditoria onde aplicável. Não expor banco ao cliente.
 10. Diante de ambiguidade de regra trabalhista, parar: não inferir cálculos ou regras legais.
 
+
+11. **Relatório obrigatório ao proprietário após cada alteração, entrega ou PR:** informar explicitamente, mesmo quando a resposta for "Não":
+    - **Branch:** se foi criada uma nova branch, qual é seu nome, branch base e se o PR foi aberto, mesclado ou ainda está pendente.
+    - **Functions:** se foram adicionadas ou alteradas funções de backend, endpoints, funções serverless ou funções SQL (diferenciar cada categoria). Descrever quais exigem build, publicação ou configuração.
+    - **Migrations:** se foram criadas/alteradas migrações ou esquema de banco; informar nome/caminho do arquivo, sua finalidade, se foi somente preparada ou efetivamente aplicada, ambiente atingido e autorização necessária.
+    - **Ações necessárias:** deixar claro o que o proprietário precisa fazer localmente ou em cada ambiente (atualização de branch, `pnpm install`, build, migration, configuração, deploy), sem supor que Git pull aplica mudanças ao banco.
+    - **Validação:** declarar status real dos checks/testes, pendências e bloqueios. Nunca confundir código versionado ou merge com execução de migration/deploy.
+    - Incluir essa seção de "Impacto operacional" também na descrição dos próximos PRs e no resumo de conclusão. Não omitir itens sem mudança: escrever "Nenhuma nova branch", "Nenhuma function nova" ou "Nenhuma migration", conforme o caso.
+
 Fluxo: contexto → plano → branch → implementação pequena → testes → PR → aprovação humana.
