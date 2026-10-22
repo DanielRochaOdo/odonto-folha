@@ -1,4 +1,4 @@
-import { and, eq, sql, tabelas, type ConexaoFolha } from '@odontofolha/database';
+import { eq, sql, tabelas, type ConexaoFolha } from '@odontofolha/database';
 
 type Origem = 'BENEFICIO' | 'COMISSAO';
 type Responsavel = 'ADM' | 'CENTRAL' | 'NENHUM';
