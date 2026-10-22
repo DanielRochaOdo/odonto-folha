@@ -14,6 +14,7 @@ type Campo = {
 type Dados = {
   grupos: Grupo[]; campos: Campo[];
   funcionariosPorGrupo: Record<string, string[]>;
+  funcionariosElegiveisIds: string[];
   competenciaReferencia: { ano: number; mes: number } | null;
 };
 type Funcionario = { id: string; nome: string; ativo: boolean };
@@ -21,7 +22,8 @@ type Cadastro = { funcionarios: Funcionario[] };
 type Passo = 1 | 2 | 3;
 
 const inicio: Dados = {
-  grupos: [], campos: [], funcionariosPorGrupo: {}, competenciaReferencia: null,
+  grupos: [], campos: [], funcionariosPorGrupo: {},
+  funcionariosElegiveisIds: [], competenciaReferencia: null,
 };
 const informacoes: Record<Origem, { titulo: string; singular: string; explicacao: string }> = {
   BENEFICIO: {
@@ -153,9 +155,9 @@ export default function ConfigCampos() {
       return;
     }
     if (evento.key !== 'Tab' || !dialogoRef.current) return;
-    const elementos = [...dialogoRef.current.querySelectorAll<HTMLElement>(
+    const elementos = Array.from(dialogoRef.current.querySelectorAll<HTMLElement>(
       'button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"]',
-    )].filter(elemento => elemento.getClientRects().length > 0);
+    )).filter(elemento => elemento.getClientRects().length > 0);
     if (elementos.length === 0) return;
     const primeiro = elementos[0], ultimo = elementos[elementos.length - 1];
     if (evento.shiftKey && document.activeElement === primeiro) {
@@ -203,13 +205,14 @@ export default function ConfigCampos() {
         funcionariosIds: selecionados,
       });
       const criado = await resposta.json() as { id: string };
-      await carregar();
       setGrupoId(criado.id);
       setCampoAberto(false);
       setCriacaoAberta(false);
       setAviso('Cadastro criado com o campo inicial e ' +
         selecionados.length + ' funcionário(s) vinculado(s).');
       gatilhoRef.current?.focus();
+      try { await carregar(); }
+      catch { setErro('Cadastro salvo, mas a atualização da lista falhou. Reabra esta seção.'); }
     } catch (e) {
       setErroCriacao(mensagemErro(e));
     } finally {
@@ -233,10 +236,11 @@ export default function ConfigCampos() {
         grupoId: grupoSelecionado.id, nome: nomeCampo.trim(),
         tipo, classificacao, ano, mes,
       });
-      await carregar();
       setNomeCampo('');
       setCampoAberto(false);
       setAviso('Campo adicionado com sucesso.');
+      try { await carregar(); }
+      catch { setErro('Campo salvo, mas não foi possível atualizar a lista. Reabra esta seção.'); }
     } catch (e) {
       setErro(mensagemErro(e));
     } finally {
@@ -265,12 +269,16 @@ export default function ConfigCampos() {
   const grupoSelecionado = grupos.find(item => item.id === grupoId);
   const campos = dados.campos.filter(item => item.grupoId === grupoId);
   const rotulo = informacoes[aba];
-  const funcionariosAtivos = funcionarios.filter(item => item.ativo);
+  const funcionariosAtivos = funcionarios.filter(item => item.ativo &&
+    dados.funcionariosElegiveisIds.includes(item.id));
   const filtrados = funcionariosAtivos.filter(item =>
     item.nome.toLocaleLowerCase('pt-BR').includes(buscaFuncionario.toLocaleLowerCase('pt-BR')));
   const idsVinculados = dados.funcionariosPorGrupo[grupoId] ?? [];
   const vinculados = funcionarios.filter(item => idsVinculados.includes(item.id));
-  const semCompetencia = !dados.competenciaReferencia;
+  const referencia = dados.competenciaReferencia;
+  const mesReferencia = referencia
+    ? referencia.ano + '-' + String(referencia.mes).padStart(2, '0') : null;
+  const semCompetenciaElegivel = !mesReferencia || competencia > mesReferencia;
 
   return (
     <section className="painel-app configuracao-campos">
@@ -524,10 +532,11 @@ export default function ConfigCampos() {
                 {passo === 3 && (
                   <div className="config-etapa-funcionarios">
                     <h4>Quem estará vinculado a {nome}?</h4>
-                    {semCompetencia ? (
+                    {semCompetenciaElegivel ? (
                       <p className="config-aviso-vinculos">
-                        Ainda não há competência cadastrada. Você pode finalizar sem funcionários
-                        e realizar os vínculos após abrir uma competência.
+                        Ainda não há competência aberta igual ou posterior à vigência escolhida.
+                        Você pode finalizar sem funcionários e criar os vínculos quando houver
+                        uma competência adequada.
                       </p>
                     ) : (
                       <>
