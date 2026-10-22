@@ -137,9 +137,18 @@ export default function PaginaInicial() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim(), password: senha }),
       });
-      if (!resposta.ok) throw new Error(resposta.status === 404
-        ? 'A API de autenticação ainda não foi ativada.'
-        : 'E-mail ou senha inválidos.');
+      if (!resposta.ok) {
+        const mensagem = resposta.status === 401
+          ? 'E-mail ou senha inválidos.'
+          : resposta.status === 404
+            ? 'A API de autenticação ainda não foi ativada na porta 3001.'
+            : resposta.status === 403
+              ? 'A requisição de login foi recusada. Verifique a origem e a configuração da API.'
+              : resposta.status >= 500
+                ? 'A API apresentou um erro ao autenticar. Confira o terminal da porta 3001.'
+                : 'Não foi possível autenticar (HTTP ' + resposta.status + ').';
+        throw new Error(mensagem);
+      }
       const atual = await fetch('/api/sessao', { cache: 'no-store', credentials: 'include' });
       if (!atual.ok) throw new Error('Sua conta não possui perfil ativo. Consulte o ADMIN.');
       setSessao(await atual.json() as Sessao);

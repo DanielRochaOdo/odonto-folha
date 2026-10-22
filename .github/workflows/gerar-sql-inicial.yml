@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'apps/api/auth.config.ts'
+      - 'apps/api/scripts/**'
       - 'apps/api/src/identidade/auth.ts'
       - 'packages/database/src/schema.ts'
       - 'packages/database/drizzle.generate.config.ts'
@@ -63,6 +64,13 @@ jobs:
         run: |
           pnpm --filter @odontofolha/api exec node --import tsx scripts/criar-admin.ts admin-sintetico@example.invalid
           psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM usuarios_perfis WHERE perfil = 'ADMIN' AND ativo = true"
+      - name: Testar recuperação de senha de ADMIN com banco sintético
+        env:
+          ODONTOFOLHA_ADMIN_PASSWORD: SenhaSintetica-Recuperada-2026
+          ODONTOFOLHA_CONFIRMA_RESET_ADMIN: SIM
+        run: |
+          pnpm --filter @odontofolha/api exec node --import tsx scripts/redefinir-senha-admin.ts admin-sintetico@example.invalid
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM "account" WHERE "providerId" = '"'"'credential'"'"' AND password IS NOT NULL'
       - name: Mostrar artefatos SQL para incorporação versionada
         run: |
           find packages/database/drizzle apps/api/migrations -type f | sort | while read -r file; do
