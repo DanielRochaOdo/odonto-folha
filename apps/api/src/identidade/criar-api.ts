@@ -1,21 +1,35 @@
 import { Hono } from 'hono';
+import { healthSchema } from '@odontofolha/contracts';
 import type { AmbienteApi } from '../config/ambiente';
 import { criarIdentidade } from './auth';
-import { criarRotasOperacionais, type DependenciasOperacionais } from '../rotas/operacionais';
-import tecnico from '../index';
+import { criarRepositorioPostgres } from '../repositorios/operacional-postgres';
+import { criarRotasOperacionais } from '../rotas/operacionais';
 
-/** Só montar após A2, migrações revisadas e repositório transacional. */
-export function criarAplicacaoAutenticada(
-  ambiente: AmbienteApi,
-  repositorio: Omit<DependenciasOperacionais, 'autenticar'>,
-) {
+/**
+ * Módulo completo preparado para ativação. Em ambiente não ativado, o
+ * entrypoint técnico nunca chama esta fábrica nem conecta ao banco.
+ * Não executar migrações automaticamente na inicialização.
+ */
+export function criarAplicacaoAutenticada(ambiente: AmbienteApi) {
   const identidade = criarIdentidade(ambiente);
   const aplicacao = new Hono();
-  aplicacao.route('/', tecnico);
+
+  aplicacao.get('/api/health', c => {
+    c.header('Cache-Control', 'no-store');
+    return c.json(healthSchema.parse({ status: 'ok', service: 'api' }));
+  });
   aplicacao.on(['GET', 'POST'], '/api/auth/*',
-    contexto => identidade.auth.handler(contexto.req.raw));
+    c => identidade.auth.handler(c.req.raw));
+
+  aplicacao.get('/api/sessao', async c => {
+    c.header('Cache-Control', 'no-store');
+    const sessao = await identidade.autenticar(c.req.raw.headers);
+    if (!sessao) return c.json({ erro: 'Sessão necessária' }, 401);
+    return c.json(sessao);
+  });
+
   const operacionais = criarRotasOperacionais({
-    ...repositorio,
+    ...criarRepositorioPostgres(identidade.conexao),
     autenticar: identidade.autenticar,
   });
   aplicacao.route('/', operacionais);

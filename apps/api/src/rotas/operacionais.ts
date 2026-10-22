@@ -125,7 +125,8 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
       return c.json({ erro: 'Sem permissão para consolidação geral' }, 403);
     const estado = await deps.buscarCompetencia(c.req.param('id'));
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
-    return c.json(consolidarEstado(estado, await deps.funcionariosAtivos()));
+    return c.json({ ...consolidarEstado(estado, await deps.funcionariosAtivos()),
+      revisao: estado.revisao });
   });
 
   app.get('/competencias/:id/comissoes/:grupo', async c => {
