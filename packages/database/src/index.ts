@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq, and } from 'drizzle-orm';
-export { eq, and, desc } from 'drizzle-orm';
+export { eq, and, desc, sql } from 'drizzle-orm';
 import * as schema from './schema';
 
 export function criarConexao(url: string) {
