@@ -3,7 +3,10 @@
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
 import Cadastros from './componentes/Cadastros';
 import ConfigCampos from './componentes/ConfigCampos';
+import Configuracoes from './componentes/Configuracoes';
 import PainelSetor from './componentes/PainelSetor';
+import { atualizarMascaraComCursor, mascaraFinal,
+  numeroDaMascara, prepararMascaraParaEdicao } from './mascaras';
 
 type Perfil = 'ADMIN' | 'DP' | 'ADM' | 'CENTRAL';
 type Sessao = { usuarioId: string; perfil: Perfil };
@@ -45,7 +48,8 @@ type Consolidacao = {
   abas: AbaEmpresa[];
   nomes: { empresas: Record<string, string>; setores: Record<string, string> };
 };
-type AbaNavegacao = 'Painel' | 'Cadastros' | 'Configuração' | 'Consolidação';
+type AbaNavegacao = 'Painel' | 'Cadastros' | 'Configuração' | 'Consolidação' | 'Configurações';
+const CHAVE_NAVEGACAO = 'odontofolha:navegacao';
 
 const dinheiro = (v: number) => new Intl.NumberFormat('pt-BR',
   { style: 'currency', currency: 'BRL' }).format(v);
@@ -70,6 +74,7 @@ async function lerErro(resposta: Response): Promise<string> {
   return 'Não foi possível concluir a operação.';
 }
 const permiteDp = (perfil: Perfil) => perfil === 'ADMIN' || perfil === 'DP';
+const numeroApi = numeroDaMascara;
 
 export default function PaginaInicial() {
   const [fase, setFase] = useState<'verificando' | 'visitante' | 'autenticado'>('verificando');
@@ -87,6 +92,41 @@ export default function PaginaInicial() {
   const [editando, setEditando] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [selecionadosMassa, setSelecionadosMassa] = useState<string[]>([]);
+  const [campoMassaId, setCampoMassaId] = useState('');
+  const [valorMassa, setValorMassa] = useState('');
+  const [buscaFuncionarioConsolidacao, setBuscaFuncionarioConsolidacao] = useState('');
+  const termoFuncionarioConsolidacao = buscaFuncionarioConsolidacao.trim().toLocaleLowerCase('pt-BR');
+  const linhasConsolidacaoFiltradas = consolidado?.abas.flatMap(empresa =>
+    empresa.funcionarios.map(linha => ({ empresa, linha })))
+    .filter(({ linha }) => !termoFuncionarioConsolidacao ||
+      linha.funcionario.nome.toLocaleLowerCase('pt-BR').includes(termoFuncionarioConsolidacao) ||
+      linha.funcionario.cpf.includes(buscaFuncionarioConsolidacao.trim())) ?? [];
+
+  function salvarNavegacao(abaAtual: AbaNavegacao, competenciaId = competenciaSelecionada) {
+    try {
+      window.localStorage.setItem(CHAVE_NAVEGACAO, JSON.stringify({
+        aba: abaAtual, competenciaId,
+      }));
+    } catch { /* A navegação continua funcionando sem armazenamento local. */ }
+  }
+
+  function navegar(abaAtual: AbaNavegacao) {
+    setAba(abaAtual);
+    salvarNavegacao(abaAtual);
+    if (abaAtual === 'Consolidação' && competenciaSelecionada) {
+      setErro('');
+      void atualizarConsolidacao(competenciaSelecionada).catch(e =>
+        setErro(e instanceof Error ? e.message : 'Não foi possível atualizar a consolidação'));
+    }
+  }
+
+  function idsSelecionadosAplicaveis(campoId: string) {
+    if (!consolidado) return [];
+    const linhas = consolidado.abas.flatMap(a => a.funcionarios);
+    return selecionadosMassa.filter(id => linhas.some(linha =>
+      linha.funcionario.id === id && linha.celulas[campoId]?.situacao !== 'nao_aplicavel'));
+  }
 
   useEffect(() => {
     const controle = new AbortController();
@@ -98,6 +138,30 @@ export default function PaginaInicial() {
       .then(s => {
         if (controle.signal.aborted) return;
         setSessao(s); setFase('autenticado');
+        try {
+          const salvo = window.localStorage.getItem(CHAVE_NAVEGACAO);
+          if (!salvo) return;
+          const contexto = JSON.parse(salvo) as {
+            aba?: AbaNavegacao; competenciaId?: string | null;
+          };
+          const abasPermitidas: AbaNavegacao[] = [
+            ...(permiteDp(s.perfil)
+              ? ['Painel', 'Cadastros', 'Configuração', 'Consolidação'] as AbaNavegacao[]
+              : []),
+            'Configurações',
+          ];
+          if (!contexto.aba || !abasPermitidas.includes(contexto.aba)) return;
+          setAba(contexto.aba);
+          if (contexto.competenciaId) {
+            setCompetenciaSelecionada(contexto.competenciaId);
+            if (contexto.aba === 'Consolidação') {
+              void atualizarConsolidacao(contexto.competenciaId).catch(e => {
+                if (!controle.signal.aborted) setErro(e instanceof Error
+                  ? e.message : 'Não foi possível restaurar a consolidação');
+              });
+            }
+          }
+        } catch { /* Estado salvo inválido: mantém o painel inicial. */ }
       })
       .catch(() => {
         if (!controle.signal.aborted) setFase('visitante');
@@ -171,6 +235,7 @@ export default function PaginaInicial() {
       setSessao(null); setFase('visitante'); setCompetencias([]);
       setConsolidado(null); setCompetenciaSelecionada(null);
       setEditando(null);
+      try { window.localStorage.removeItem(CHAVE_NAVEGACAO); } catch { /* Ignora armazenamento indisponível. */ }
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao sair');
     }
@@ -186,6 +251,7 @@ export default function PaginaInicial() {
     }
     setConsolidado(await resposta.json() as Consolidacao);
     setCompetenciaSelecionada(id); setEditando(null); setAba('Consolidação');
+    salvarNavegacao('Consolidação', id);
   }
 
   async function criarCompetencia(evento: FormEvent<HTMLFormElement>) {
@@ -210,10 +276,12 @@ export default function PaginaInicial() {
       ? '' : String(anterior.valor);
     if (entrada === valorAnterior || anterior?.situacao === 'nao_aplicavel') return;
     if (!entrada.trim()) { setErro('Para limpar use a ação específica de remover valor.'); return; }
+    if ((campo.tipo === 'moeda' || campo.tipo === 'percentual') && valorAnterior !== '' &&
+      numeroApi(entrada) === Number(valorAnterior)) return;
     if (anterior?.quantidadeParcelas && !window.confirm(
       'Substituir as parcelas pelo total direto, preservando o histórico?')) return;
     const valor = campo.tipo === 'moeda' || campo.tipo === 'percentual'
-      ? Number(entrada) : entrada;
+      ? numeroApi(entrada) : entrada;
     if (typeof valor === 'number' && !Number.isFinite(valor)) {
       setErro('Valor numérico inválido'); return;
     }
@@ -250,6 +318,64 @@ export default function PaginaInicial() {
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível salvar');
       setFeedback('Alteração não salva');
+    } finally { setSalvando(false); }
+  }
+
+  async function aplicarValorEmMassa() {
+    if (!consolidado || !competenciaSelecionada || !campoMassaId ||
+      !selecionadosMassa.length || salvando) return;
+    const campo = consolidado.colunas.find(c => c.id === campoMassaId);
+    if (!campo) return;
+    const funcionariosAplicaveis = idsSelecionadosAplicaveis(campo.id);
+    if (!funcionariosAplicaveis.length || funcionariosAplicaveis.length !== selecionadosMassa.length) {
+      setErro('Selecione apenas funcionarios vinculados ao campo escolhido.'); return;
+    }
+    if (!valorMassa.trim()) { setErro('Informe o valor para aplicar aos funcionÃ¡rios selecionados.'); return; }
+    const valor = campo.tipo === 'moeda' || campo.tipo === 'percentual'
+      ? numeroApi(valorMassa) : valorMassa;
+    if (typeof valor === 'number' && (!Number.isFinite(valor) ||
+      (campo.tipo === 'moeda' && valor < 0))) {
+      setErro('Informe um valor numÃ©rico vÃ¡lido. Moeda nÃ£o pode ser negativa.'); return;
+    }
+    const linhasSelecionadas = consolidado.abas.flatMap(a => a.funcionarios)
+      .filter(linha => selecionadosMassa.includes(linha.funcionario.id));
+    if (linhasSelecionadas.some(linha => (linha.celulas[campo.id]?.quantidadeParcelas ?? 0) > 0) &&
+      !window.confirm('Alguns funcionÃ¡rios tÃªm parcelas neste campo. SubstituÃ­-las pelo mesmo valor total?')) return;
+    setErro(''); setSalvando(true); setFeedback('Aplicando valor...');
+    try {
+      if (campo.origem === 'BENEFICIO') {
+        const escolha = window.prompt(
+          'BenefÃ­cio: digite R para aplicar como base recorrente ou M para exceÃ§Ã£o apenas neste mÃªs.', 'R');
+        if (escolha === null) { setFeedback(''); return; }
+        const acao = escolha.trim().toUpperCase() === 'R' ? 'base'
+          : escolha.trim().toUpperCase() === 'M' ? 'excecao' : null;
+        if (!acao) { setErro('Escolha R ou M para salvar o benefÃ­cio.'); setFeedback(''); return; }
+        const respostaCatalogo = await fetch('/api/beneficios/catalogo',
+          { cache: 'no-store', credentials: 'include' });
+        if (!respostaCatalogo.ok) throw new Error(await lerErro(respostaCatalogo));
+        const catalogo = await respostaCatalogo.json() as { versao: number };
+        const resposta = await fetch('/api/beneficios/' + encodeURIComponent(competenciaSelecionada) +
+          '/valores-em-massa', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ funcionariosIds: funcionariosAplicaveis, campoId: campo.id,
+            valor, acao, versaoEsperada: catalogo.versao }),
+        });
+        if (!resposta.ok) throw new Error(await lerErro(resposta));
+      } else {
+        const resposta = await fetch('/api/competencias/' + encodeURIComponent(competenciaSelecionada) +
+          '/lancamentos-em-massa', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ funcionariosIds: funcionariosAplicaveis, campoId: campo.id, valor,
+            modo: 'total', versaoEsperada: consolidado.revisao, confirmarSubstituicao: true }),
+        });
+        if (!resposta.ok) throw new Error(await lerErro(resposta));
+      }
+      await atualizarConsolidacao(competenciaSelecionada);
+      setFeedback(`Valor aplicado a ${selecionadosMassa.length} funcionÃ¡rio(s).`);
+      setSelecionadosMassa([]); setValorMassa('');
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'NÃ£o foi possÃ­vel aplicar os valores.');
+      setFeedback('AlteraÃ§Ã£o nÃ£o salva');
     } finally { setSalvando(false); }
   }
 
@@ -362,14 +488,16 @@ export default function PaginaInicial() {
         <div className="grupo-navegacao">
           <p>ESPAÇO DE TRABALHO</p>
           <button className={aba === 'Painel' ? 'ativo' : ''}
-            onClick={() => setAba('Painel')}>▤ <span>Competências</span></button>
+            onClick={() => navegar('Painel')}>▤ <span>Competências</span></button>
           {permiteDp(sessao!.perfil) && <button className={aba === 'Cadastros' ? 'ativo' : ''}
-            onClick={() => setAba('Cadastros')}>♙ <span>Cadastros</span></button>}
+            onClick={() => navegar('Cadastros')}>♙ <span>Cadastros</span></button>}
           {permiteDp(sessao!.perfil) && <button className={aba === 'Configuração' ? 'ativo' : ''}
-            onClick={() => setAba('Configuração')}>◇ <span>Benefícios e comissões</span></button>}
+            onClick={() => navegar('Configuração')}>◇ <span>Benefícios e comissões</span></button>}
           {permiteDp(sessao!.perfil) &&
             <button className={aba === 'Consolidação' ? 'ativo' : ''}
-              onClick={() => setAba('Consolidação')}>▦ <span>Consolidação</span></button>}
+              onClick={() => navegar('Consolidação')}>▦ <span>Consolidação</span></button>}
+          <button className={aba === 'Configurações' ? 'ativo' : ''}
+            onClick={() => navegar('Configurações')}>⚙ <span>Configurações</span></button>
         </div>
         <div className="rodape-lateral">
           <div className="perfil-atual">
@@ -391,13 +519,15 @@ export default function PaginaInicial() {
       <div className="corpo">
         <header className="cabecalho-app">
           <div><span className="sobre">GRUPO ODONTOART · ODONTOFOLHA</span>
-            <h1>{aba === 'Painel' ? 'Competências' : aba === 'Cadastros' ? 'Cadastros' : aba === 'Configuração' ? 'Benefícios e comissões' : 'Consolidação mensal'}</h1></div>
+            <h1>{aba === 'Painel' ? 'Competências' : aba === 'Cadastros' ? 'Cadastros'
+              : aba === 'Configuração' ? 'Benefícios e comissões'
+                : aba === 'Configurações' ? 'Configurações' : 'Consolidação mensal'}</h1></div>
 
         </header>
         <div className="conteudo-app">
           {erro && <p role="alert" className="erro alerta-app">{erro}</p>}
           {feedback && <p role="status" className="feedback">{feedback}</p>}
-          {!permiteDp(sessao!.perfil) ? (
+          {aba === 'Configurações' ? <Configuracoes perfil={sessao!.perfil} /> : !permiteDp(sessao!.perfil) ? (
             <PainelSetor perfil={sessao!.perfil as 'ADM' | 'CENTRAL'}/>
           ) : aba === 'Cadastros' ? <Cadastros /> : aba === 'Configuração' ? <ConfigCampos /> : aba === 'Painel' ? (
             <>
@@ -432,35 +562,95 @@ export default function PaginaInicial() {
             <section className="painel-app estado-vazio">
               <h2>Selecione uma competência</h2>
               <p>Volte ao painel e abra o mês que deseja consultar.</p>
-              <button className="botao-secundario" onClick={() => setAba('Painel')}>Ver competências</button>
+              <button className="botao-secundario" onClick={() => navegar('Painel')}>Ver competências</button>
             </section>
           ) : (
-            <section className="painel-app">
-              <div className="titulo-secao">
+            <section className="painel-app consolidacao-painel">
+              <div className="titulo-secao consolidacao-cabecalho">
                 <div><span className="sobre">CONSOLIDADO · {consolidado.revisao}ª REVISÃO</span>
                   <h2>{nomeMes(consolidado.competencia.ano, consolidado.competencia.mes)}</h2>
                   <p>Salário contratual + proventos monetários − descontos monetários.</p>
                 </div>
-                <div className="acoes-secao">
-                  <button className="botao-secundario" onClick={() => setAba('Painel')}>← Voltar</button>
+                <div className="acoes-secao consolidacao-acoes">
+                  <label className="filtro-funcionario busca-cabecalho">Buscar funcionário
+                    <input type="search" value={buscaFuncionarioConsolidacao}
+                      onChange={evento => setBuscaFuncionarioConsolidacao(evento.target.value)}
+                      placeholder="Digite o nome ou CPF" autoComplete="off" />
+                  </label>
+                  <button className="botao-secundario" onClick={() => navegar('Painel')}>← Voltar</button>
                   <a className="acao-principal" href={'/api/competencias/' +
                     encodeURIComponent(competenciaSelecionada ?? '') + '/exportacao.xlsx'}>
                     ↓ Exportar XLSX
                   </a>
                 </div>
               </div>
-              {consolidado.envios?.filter(envio => envio.responsavel !== 'NENHUM')
-                .map(envio => <div key={envio.grupoId} className="feedback">
-                  <strong>{consolidado.colunas.find(c => c.grupoId === envio.grupoId)?.grupoNome ?? 'Comissão'}</strong>
-                  {' · '}{envio.responsavel} · {envio.concluido ? 'Concluída' : 'Pendente'}
-                  {envio.concluido && <button className="botao-secundario" disabled={salvando}
-                    onClick={() => void reabrirComissao(envio.grupoId)}>Reabrir comissão</button>}
-                </div>)}
-              <p className="orientacao-tabela">Selecione o lápis ao final de uma linha para editar.
-                Pressione Enter ou Tab para salvar e Esc para desfazer antes de sair do campo.
-                Valores pendentes aparecem em branco; zero é informado explicitamente.</p>
+              {!!(consolidado.envios ?? []).filter(envio => envio.responsavel !== 'NENHUM').length &&
+                <details className="envios-consolidacao">
+                  <summary>Envios de comissões · {(consolidado.envios ?? []).filter(envio =>
+                    envio.responsavel !== 'NENHUM').length}</summary>
+                  <div className="lista-envios-consolidacao">
+                    {(consolidado.envios ?? []).filter(envio => envio.responsavel !== 'NENHUM')
+                      .map(envio => <div key={envio.grupoId} className="feedback">
+                        <strong>{consolidado.colunas.find(c => c.grupoId === envio.grupoId)?.grupoNome ?? 'Comissão'}</strong>
+                        {' · '}{envio.responsavel} · {envio.concluido ? 'Concluída' : 'Pendente'}
+                        {envio.concluido && <button className="botao-secundario" disabled={salvando}
+                          onClick={() => void reabrirComissao(envio.grupoId)}>Reabrir comissão</button>}
+                      </div>)}
+                  </div>
+                </details>}
+              <p className="orientacao-tabela">Edição: use o lápis. Enter/Tab salva; Esc desfaz. Pendências ficam em branco; zero é explícito.</p>
+              <details className="edicao-massa" aria-label="Aplicar o mesmo valor a vários funcionários">
+                <summary className="edicao-massa-resumo">
+                  <strong>Edição em massa</strong>
+                  <span>{selecionadosMassa.length} funcionário(s) selecionado(s)</span>
+                </summary>
+                <div className="edicao-massa-conteudo">
+                <div className="edicao-massa-topo">
+                  <button type="button" className="botao-secundario" disabled={salvando}
+                    onClick={() => setSelecionadosMassa(consolidado.abas.flatMap(a =>
+                      a.funcionarios.filter(l => !campoMassaId ||
+                        l.celulas[campoMassaId]?.situacao !== 'nao_aplicavel')
+                        .map(l => l.funcionario.id)))}>Selecionar todos</button>
+                  <button type="button" className="botao-secundario" disabled={salvando}
+                    onClick={() => setSelecionadosMassa([])}>Limpar selecao</button>
+                </div>
+                <label>Campo
+                  <select value={campoMassaId} disabled={salvando}
+                    onChange={evento => { setCampoMassaId(evento.target.value); setValorMassa(''); }}>
+                    <option value="">Selecione beneficio ou comissao</option>
+                    {consolidado.colunas.map(c => <option key={c.id} value={c.id}>{c.grupoNome} - {c.nome}</option>)}
+                  </select>
+                </label>
+                {(() => {
+                  const campo = consolidado.colunas.find(c => c.id === campoMassaId);
+                  if (!campo) return null;
+                  const numerico = campo.tipo === 'moeda' || campo.tipo === 'percentual';
+                  return <label>Valor
+                    <span className="entrada-com-mascara">
+                      <input type={campo.tipo === 'data' ? 'date' : campo.tipo === 'horario' ? 'time' : 'text'}
+                        inputMode={numerico ? 'decimal' : undefined} value={valorMassa} disabled={salvando}
+                        onFocus={evento => {
+                          if (numerico) setValorMassa(prepararMascaraParaEdicao(evento.currentTarget));
+                        }}
+                        onChange={evento => setValorMassa(numerico
+                          ? atualizarMascaraComCursor(evento.currentTarget, campo.tipo as 'moeda' | 'percentual')
+                          : evento.target.value)}
+                        onBlur={() => { if (numerico) setValorMassa(atual =>
+                          mascaraFinal(atual, campo.tipo as 'moeda' | 'percentual')); }} />
+                    </span>
+                  </label>;
+                })()}
+                <button type="button" className="acao-principal" disabled={salvando ||
+                  !selecionadosMassa.length || !campoMassaId || !valorMassa.trim()}
+                  onClick={() => void aplicarValorEmMassa()}>
+                  {salvando ? 'Salvando...' : 'Aplicar aos selecionados'}
+                </button>
+                <p>Repita o mesmo valor em um campo de beneficio ou comissao. Datas e horarios usam o formato do navegador.</p>
+                </div>
+              </details>
               <div className="rolagem-tabela"><table className="tabela-principal">
                 <thead><tr>
+                  <th scope="col"><span className="sr-only">Selecionar funcionarios</span></th>
                   <th>Empresa Contratante</th><th>Empresa Lotado</th>
                   <th>Setor de Lotação</th><th>CPF</th><th>Nome</th>
                   <th>Cargo</th><th>Admissão</th><th>Salário Contratual</th>
@@ -469,9 +659,12 @@ export default function PaginaInicial() {
                     {c.grupoNome}<span>{c.nome}</span></th>)}
                   <th>Total aritmético</th><th>Ação</th>
                 </tr></thead>
-                <tbody>{consolidado.abas.flatMap(empresa =>
-                  empresa.funcionarios.map(linha => (
+                <tbody>{linhasConsolidacaoFiltradas.map(({ linha }) => (
                     <tr key={linha.funcionario.id}>
+                      <td><input type="checkbox" aria-label={'Selecionar ' + linha.funcionario.nome}
+                        checked={selecionadosMassa.includes(linha.funcionario.id)} disabled={salvando}
+                        onChange={evento => setSelecionadosMassa(atual => evento.target.checked
+                          ? [...atual, linha.funcionario.id] : atual.filter(id => id !== linha.funcionario.id))} /></td>
                       <td>{consolidado.nomes.empresas[linha.funcionario.empresaContratanteId] ?? 'Empresa não identificada'}</td>
                       <td>{consolidado.nomes.empresas[linha.funcionario.empresaLotadoId] ?? 'Empresa não identificada'}</td>
                       <td>{consolidado.nomes.setores[linha.funcionario.setorLotacaoId] ?? 'Setor não identificado'}</td>
@@ -488,13 +681,30 @@ export default function PaginaInicial() {
                           cel?.situacao !== 'nao_aplicavel';
                         return <td key={c.id} className="celula-dinamica">
                           {alteravel ? (
+                            <span className="editor-valor-mascarado">
                             <input aria-label={c.nome + ' de ' + linha.funcionario.nome}
                               className="editor-celula" key={consolidado.revisao + ':' + c.id}
-                              type={c.tipo === 'data' ? 'date' : c.tipo === 'horario' ? 'time'
-                                : c.tipo === 'moeda' || c.tipo === 'percentual' ? 'number' : 'text'}
-                              step="0.01" defaultValue={valor} disabled={salvando}
-                              onBlur={e => void salvarCelula(linha, c, e.target.value)}
+                              type={c.tipo === 'data' ? 'date' : c.tipo === 'horario' ? 'time' : 'text'}
+                              inputMode={c.tipo === 'moeda' || c.tipo === 'percentual' ? 'decimal' : undefined}
+                              defaultValue={c.tipo === 'moeda' || c.tipo === 'percentual'
+                                ? mascaraFinal(valor, c.tipo) : valor} disabled={salvando}
+                              onFocus={e => {
+                                if (c.tipo === 'moeda' || c.tipo === 'percentual')
+                                  prepararMascaraParaEdicao(e.currentTarget);
+                              }}
+                              onChange={e => {
+                                if (c.tipo === 'moeda' || c.tipo === 'percentual')
+                                  atualizarMascaraComCursor(e.currentTarget,
+                                    c.tipo as 'moeda' | 'percentual');
+                              }}
+                              onBlur={e => {
+                                const entrada = c.tipo === 'moeda' || c.tipo === 'percentual'
+                                  ? mascaraFinal(e.currentTarget.value, c.tipo) : e.currentTarget.value;
+                                e.currentTarget.value = entrada;
+                                void salvarCelula(linha, c, entrada);
+                              }}
                               onKeyDown={e => teclaCelula(e, valor)} />
+                            </span>
                           ) : cel?.situacao === 'nao_aplicavel'
                             ? (editando === linha.funcionario.id
                               ? <button className="botao-secundario" disabled={salvando}
@@ -515,10 +725,15 @@ export default function PaginaInicial() {
                           ? null : linha.funcionario.id)}>
                         {editando === linha.funcionario.id ? 'Concluir' : '✎'}
                       </button></td>
-                    </tr>)))}
+                    </tr>))}
+                  {!linhasConsolidacaoFiltradas.length && <tr>
+                    <td colSpan={11 + consolidado.colunas.length} className="config-linha-vazia">
+                      Nenhum funcionário encontrado.
+                    </td>
+                  </tr>}
                 </tbody>
                 <tfoot>{consolidado.abas.map(empresa => <tr key={empresa.empresaContratanteId}>
-                  <td colSpan={8 + consolidado.colunas.length}>Total por empresa {consolidado.nomes.empresas[empresa.empresaContratanteId] ?? 'Não identificada'}
+                  <td colSpan={9 + consolidado.colunas.length}>Total por empresa {consolidado.nomes.empresas[empresa.empresaContratanteId] ?? 'Não identificada'}
                     {empresa.parcial ? ' (parcial)' : ''}</td>
                   <td className="moeda forte">{dinheiro(empresa.totalAritmetico)}</td>
                   <td></td>

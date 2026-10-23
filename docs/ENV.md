@@ -1,63 +1,44 @@
-# Configuração das variáveis de ambiente — OdontoFolha
+# Variáveis de ambiente — OdontoFolha
 
-**Situação em 21/10/2026:** configuração planejada, ainda NÃO conectada nem implantada.
-O proprietário optou por criar inicialmente um projeto Neon de produção; não autorizou
-a criação de banco de homologação neste momento. Isso não autoriza migrações em produção,
-uso de dados reais em testes nem publicação online.
+As variáveis de produção ainda não foram configuradas na Vercel. Em Services,
+os serviços pertencem ao mesmo projeto e compartilham seu escopo de variáveis.
+Considere cada variável de projeto disponível aos builds e runtimes de ambos.
 
-## apps/api — Vercel do backend Hono
+## API Hono
 
-| Variável | Conteúdo | Observação |
+| Variável | Conteúdo | Uso |
 | --- | --- | --- |
-| DATABASE_URL | URL PostgreSQL **pooled** obtida no Neon / Connect | Segredo; apenas servidor; não usar NEXT_PUBLIC_ |
-| DIRECT_URL | URL PostgreSQL **direct** do mesmo banco | Apenas migração administrativa; não necessária como variável runtime da API |
-| BETTER_AUTH_SECRET | Segredo aleatório com no mínimo 32 caracteres | Gerar com `openssl rand -base64 32` fora do Git |
-| BETTER_AUTH_URL | Origem pública canônica da API (ex.: https://api.exemplo.com) | Backend autenticará sob /api/auth; a rota ainda não existe |
-| WEB_ORIGIN | Origem pública canônica da Web (ex.: https://folha.exemplo.com) | Para CORS/origens confiáveis; implementar antes do login |
+| `DATABASE_URL` | Conexão PostgreSQL pooled do Neon | Runtime da API; nunca usar `NEXT_PUBLIC_` |
+| `BETTER_AUTH_SECRET` | Segredo aleatório de ao menos 32 caracteres | Runtime de autenticação |
+| `BETTER_AUTH_URL` | Origem HTTPS pública do projeto, sem caminho | Better Auth; rotas em `/api/auth/*` |
+| `WEB_ORIGIN` | Origem HTTPS pública do projeto, sem barra final | Origem confiável do Better Auth |
+| `ODONTOFOLHA_API_REAL` | Valor exato `ativada` | Opcional; habilita autenticação e rotas de negócio |
 
-## apps/web — Vercel do frontend Next.js
+Na topologia de um domínio, `BETTER_AUTH_URL` e `WEB_ORIGIN` devem apontar para
+a mesma origem pública, por exemplo `https://odonto-folha.vercel.app`.
+`DIRECT_URL` é somente para tarefas administrativas de migration; não a
+configure no runtime. O processo da aplicação não executa migrations nem seeds.
 
-| Variável | Conteúdo | Observação |
-| --- | --- | --- |
-| API_INTERNAL_URL | URL HTTPS da API Hono | Endereço servidor-servidor ou destino de rewrite; roteamento ainda não implementado |
+## Web Next.js
 
-Não incluir DATABASE_URL, DIRECT_URL ou BETTER_AUTH_SECRET em apps/web;
-não criar NEXT_PUBLIC_ para segredos. No navegador, preferir chamadas de mesma origem
-por proxy /api quando o roteamento estiver validado, para evitar complexidade de cookies.
+Não precisa de URL de API na Vercel: as chamadas relativas `/api/...` são
+encaminhadas pelo roteamento do projeto. `API_INTERNAL_URL` é opcional e local;
+serve somente ao proxy usado por `pnpm dev` quando a API local não está na porta
+padrão `3001`.
 
-## Onde obter a URL Neon
-1. Acesse o projeto Neon e clique em **Connect**.
-2. Confira projeto, branch principal, banco e role correspondente.
-3. Copie **pooled connection** para DATABASE_URL: host com `-pooler`.
-4. Desative Connection pooling e copie a conexão **direct** somente para migrations.
-5. Preserve `sslmode=require` e parâmetros de segurança fornecidos pelo Neon.
-6. NÃO cole URLs reais em chat, PR ou arquivo versionado, pois elas contêm senha.
+Não exponha `DATABASE_URL`, `DIRECT_URL` ou `BETTER_AUTH_SECRET` por variáveis
+`NEXT_PUBLIC_`. Como o escopo de ambiente do projeto é compartilhado, o código
+da Web não deve ler esses segredos.
 
-## Configuração na Vercel
-Quando A3 autorizar vinculação/publicação, criar DOIS projetos Vercel, um para
-`apps/web` e outro para `apps/api`, respeitando root directories.
-Configurar Environment Variables com alvo `Production` no projeto certo.
-Se posteriormente houver Preview/Development, não apontar esses ambientes ao
-banco de produção; configurar branch Neon isolada antes.
+## Ambientes
 
-Os valores de `BETTER_AUTH_URL`, `WEB_ORIGIN` e `API_INTERNAL_URL` só
-serão definitivos quando a Vercel fornecer os domínios de ambos os apps.
-Não usar senha fixa de ADMIN em .env. A conta será provisionada por mecanismo
-seguro com hash, não seed com senha em texto puro.
+- **Production:** configurar as origens definitivas somente após o projeto e
+  domínio serem escolhidos. Manter `ODONTOFOLHA_API_REAL` ausente até revisar e
+  autorizar banco, migrations e provisionamento inicial.
+- **Preview:** não compartilhar credenciais nem URL do banco de produção. Manter
+  a API de negócio desativada até existir banco isolado e autorizado.
+- **Development local:** usar arquivos de ambiente ignorados pelo Git. Não
+  copiar secrets para o repositório.
 
-**Nota:** caso tenha sido habilitado o serviço gerenciado de Neon Auth durante
-a criação do projeto, escolher e integrar um único provedor de autenticação,
-evitando duas autenticações paralelas. A arquitetura atual propõe Better Auth
-no backend Hono; Neon Auth demanda integração diferente e não está implementado.
-
-## Desenvolvimento local
-Não conectar o ambiente local ao Neon de produção. Se um dia houver
-`apps/api/.env.local`, o script atual `tsx watch src/server.ts` ainda não
-garante o carregamento automático desse arquivo: implementar carregamento explícito
-ou uso de variáveis do processo antes de tentar iniciar API com segredos locais.
-Next.js carrega `apps/web/.env.local`, mas esse arquivo também deve permanecer fora
-do Git. O repositório já ignora `.env` e `.env.*`, exceto `.env.example`.
-
-## Fase atual
-Somente declaração de variáveis e documentação. Banco, transações, migrações,
-autenticação, CORS, rewrite, deploy e provisionamento inicial ainda estão pendentes.
+O proprietário optou por usar inicialmente um único projeto Neon. Isso não
+autoriza migrations, seeds, testes destrutivos nem uso de dados reais em Preview.

@@ -175,13 +175,13 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
     });
   }
 
-  async function vincularFuncionariosBeneficio(
+  async function vincularFuncionariosGrupo(
     grupoId: string, funcionariosIds: string[], autor: string,
   ) {
     return db.transaction(async tx => {
       const [grupo] = await tx.select().from(t.gruposDinamicos)
         .where(eq(t.gruposDinamicos.id, grupoId)).limit(1);
-      if (!grupo || grupo.origem !== 'BENEFICIO') throw new Error('Benefício inexistente');
+      if (!grupo || !grupo.ativo) throw new Error('Cadastro inexistente ou inativo');
       const ids = [...new Set(funcionariosIds)];
       const cadastrados = await tx.select({ id: t.vinculosEmpregaticios.id })
         .from(t.vinculosEmpregaticios);
@@ -340,5 +340,5 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
     });
   }
   return { listar, criarGrupo, criarCompleto, criarCampo, ativarCampo,
-    listarBasesBeneficio, salvarBasesBeneficio, vincularFuncionariosBeneficio };
+    listarBasesBeneficio, salvarBasesBeneficio, vincularFuncionariosGrupo };
 }

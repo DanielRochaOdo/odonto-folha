@@ -11,6 +11,8 @@ import { criarBeneficiosPostgres } from '../repositorios/beneficios-postgres';
 import { criarRotasBeneficios } from '../rotas/beneficios';
 import { criarRotasSetor } from '../rotas/setor';
 import { criarRotasOperacionais } from '../rotas/operacionais';
+import { criarRotasConta } from '../rotas/conta';
+import { criarRotasUsuarios } from '../rotas/usuarios';
 
 /**
  * Módulo completo preparado para ativação. Em ambiente não ativado, o
@@ -34,6 +36,16 @@ export function criarAplicacaoAutenticada(ambiente: AmbienteApi) {
     if (!sessao) return c.json({ erro: 'Sessão necessária' }, 401);
     return c.json(sessao);
   });
+
+  aplicacao.route('/', criarRotasConta({
+    autenticar: identidade.autenticar,
+    pool: identidade.conexao.pool,
+    obterSessaoAuth: cabecalhos => identidade.auth.api.getSession({ headers: cabecalhos }),
+  }));
+  aplicacao.route('/', criarRotasUsuarios({
+    autenticar: identidade.autenticar,
+    pool: identidade.conexao.pool,
+  }));
 
   const beneficios = criarBeneficiosPostgres(identidade.conexao);
   const operacionais = criarRotasOperacionais({
