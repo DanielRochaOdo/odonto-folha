@@ -419,7 +419,16 @@ export default function PaginaInicial() {
   async function atualizarConsolidacao(id: string) {
     const resposta = await fetch('/api/competencias/' + encodeURIComponent(id) +
       '/consolidacao', { cache: 'no-store', credentials: 'include' });
-    if (!resposta.ok) throw new Error(await lerErro(resposta));
+    if (!resposta.ok) {
+      const mensagem = await lerErro(resposta);
+      if (resposta.status === 404 && mensagem === 'Competência não encontrada') {
+        setCompetenciaSelecionada(null); setConsolidado(null); setAba('Painel');
+        setModalFechamento(null); setErro(''); setFeedback('');
+        salvarNavegacao('Painel', null);
+        return;
+      }
+      throw new Error(mensagem);
+    }
     setConsolidado(await resposta.json() as Consolidacao);
     setModalFechamento(null);
   }
