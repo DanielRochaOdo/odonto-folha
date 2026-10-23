@@ -205,11 +205,11 @@ export default function PaginaInicial() {
         const mensagem = resposta.status === 401
           ? 'E-mail ou senha inválidos.'
           : resposta.status === 404
-            ? 'A API de autenticação ainda não foi ativada na porta 3001.'
+            ? 'A API de autenticação não está ativa nesta implantação. Verifique ODONTOFOLHA_API_REAL no ambiente de produção.'
             : resposta.status === 403
               ? 'A requisição de login foi recusada. Verifique a origem e a configuração da API.'
               : resposta.status >= 500
-                ? 'A API apresentou um erro ao autenticar. Confira o terminal da porta 3001.'
+                ? 'A API apresentou um erro ao autenticar. Verifique os logs da implantação e as variáveis de ambiente da API.'
                 : 'Não foi possível autenticar (HTTP ' + resposta.status + ').';
         throw new Error(mensagem);
       }
