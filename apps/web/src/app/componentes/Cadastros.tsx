@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { PencilSquareIcon, UserMinusIcon } from '@heroicons/react/24/outline';
+import { formatarData } from '../datas';
 
 type Empresa = { id: string; nome: string; ativa: boolean };
 type Setor = { id: string; nome: string; ativo: boolean };
@@ -117,7 +119,7 @@ export default function Cadastros() {
       'Movimentação registrada com vigência ' + mesMovimento);
     setEditandoMovimentacao(null);
   }
-  return <section className="area-cadastros">
+  return <section className="area-cadastros modulo-cadastros">
     <div className="titulo-secao"><div><h2>Empresas, setores e funcionários</h2>
       <p>Os cadastros alimentam as competências e a exportação por empresa contratante.</p></div>
       <button className="acao-principal" onClick={() => setMostrarNovo(!mostrarNovo)}>
@@ -226,13 +228,24 @@ export default function Cadastros() {
             <td>{nomeDa(dados.empresas, f.empresaContratanteId)}</td>
             <td>{nomeDa(dados.empresas, f.empresaLotadoId)}</td>
             <td>{nomeDa(dados.setores, f.setorLotacaoId)}</td>
-            <td>{f.cargo}</td><td>{f.admissao}</td>
+            <td>{f.cargo}</td><td>{formatarData(f.admissao)}</td>
             <td className="moeda">{reais.format(f.salarioContratual)}</td>
             <td>{f.ativo ? 'Ativo' : 'Inativo'}</td>
-            <td><div className="acoes-secao">
-              {f.ativo && <><button className="botao-secundario" onClick={() => iniciarMovimentacao(f)}>
-                Alterar</button><button className="botao-sair" onClick={() => void desligar(f)}>
-                Desligar</button></>}
+            <td className="celula-acoes-cadastro"><div className="acoes-cadastro">
+              {f.ativo && <>
+                <button type="button" className="acao-cadastro-icone"
+                  aria-label={'Alterar vínculo de ' + f.nome}
+                  title={'Alterar vínculo de ' + f.nome}
+                  onClick={() => iniciarMovimentacao(f)}>
+                  <PencilSquareIcon aria-hidden="true" />
+                </button>
+                <button type="button" className="acao-cadastro-icone"
+                  aria-label={'Desligar ' + f.nome}
+                  title={'Desligar ' + f.nome}
+                  onClick={() => void desligar(f)}>
+                  <UserMinusIcon aria-hidden="true" />
+                </button>
+              </>}
             </div></td></tr>)}</tbody>
         </table></div>}
     </section>

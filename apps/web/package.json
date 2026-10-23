@@ -13,6 +13,7 @@
     "test": "node -e \"console.log('Nenhum teste de UI definido em G1')\""
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "next": "^16.4.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

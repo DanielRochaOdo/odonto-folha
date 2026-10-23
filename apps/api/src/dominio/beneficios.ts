@@ -1,5 +1,5 @@
 import type { Competencia, Perfil } from '@odontofolha/contracts';
-import type { AtorFolha, EstadoCompetencia } from './competencias';
+import { exigirCompetenciaAberta, type AtorFolha, type EstadoCompetencia } from './competencias';
 import { gerarConsolidacao } from './consolidacao';
 
 /** Vigência é append-only: uma correção nunca altera o valor da base de meses passados. */
@@ -87,6 +87,7 @@ export function atualizarBaseRecorrente(
   catalogo: CatalogoBeneficios, estado: EstadoCompetencia, funcionarioId: string,
   campoId: string, valor: number | string, ator: AtorFolha, versaoEsperada: number,
 ): CatalogoBeneficios {
+  exigirCompetenciaAberta(estado);
   garantirDp(ator.perfil);
   garantirVersao(catalogo, versaoEsperada);
   const campo = validarCampo(estado, campoId, funcionarioId);
@@ -102,6 +103,7 @@ export function definirExcecaoMensal(
   catalogo: CatalogoBeneficios, estado: EstadoCompetencia, funcionarioId: string,
   campoId: string, valor: number | string, ator: AtorFolha, versaoEsperada: number,
 ): CatalogoBeneficios {
+  exigirCompetenciaAberta(estado);
   garantirDp(ator.perfil);
   garantirVersao(catalogo, versaoEsperada);
   const campo = validarCampo(estado, campoId, funcionarioId);
@@ -139,6 +141,7 @@ export function confirmarReajuste(
   catalogo: CatalogoBeneficios, estado: EstadoCompetencia,
   previa: PreviaReajuste, ator: AtorFolha,
 ): CatalogoBeneficios {
+  exigirCompetenciaAberta(estado);
   garantirDp(ator.perfil);
   garantirVersao(catalogo, previa.versaoCatalogo);
   if (!igual(estado.competencia, previa.competencia))

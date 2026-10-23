@@ -104,10 +104,6 @@ export default function Configuracoes({ perfil }: { perfil: 'ADMIN' | 'DP' | 'AD
   }
 
   return <section className="painel-app configuracoes-conta">
-    <header className="config-cabecalho">
-      <h2>Configurações</h2>
-      <p>Gerencie seus dados de acesso à conta.</p>
-    </header>
     <div className="abas-configuracao" role="tablist" aria-label="Abas de configurações">
       <button type="button" id="aba-meus-dados" role="tab" aria-selected={aba === 'Meus Dados'}
         aria-controls="painel-meus-dados"
