@@ -1,16 +1,34 @@
 'use client';
 
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
+import {
+  ArrowDownTrayIcon,
+  ArrowLeftIcon,
+  ArrowLeftOnRectangleIcon,
+  ArrowRightIcon,
+  ArrowUpRightIcon,
+  BanknotesIcon,
+  CalendarDaysIcon,
+  ChevronDoubleLeftIcon,
+  Cog6ToothIcon,
+  PencilSquareIcon,
+  RectangleGroupIcon,
+  UserGroupIcon,
+} from '@heroicons/react/24/outline';
 import Cadastros from './componentes/Cadastros';
 import ConfigCampos from './componentes/ConfigCampos';
 import Configuracoes from './componentes/Configuracoes';
 import PainelSetor from './componentes/PainelSetor';
+import { formatarData } from './datas';
 import { atualizarMascaraComCursor, mascaraFinal,
   numeroDaMascara, prepararMascaraParaEdicao } from './mascaras';
 
 type Perfil = 'ADMIN' | 'DP' | 'ADM' | 'CENTRAL';
 type Sessao = { usuarioId: string; perfil: Perfil };
-type CompetenciaResumo = { id: string; ano: number; mes: number; revisao: number };
+type CompetenciaResumo = { id: string; ano: number; mes: number; revisao: number;
+  fechadaEm: string | null; fechadaComPendencias: boolean };
+type PendenciaFechamento = { responsavel: string; quantidade: number;
+  grupos: { nome: string; quantidade: number }[] };
 type CampoDinamico = {
   id: string; grupoId: string; grupoNome: string; nome: string;
   origem: 'BENEFICIO' | 'COMISSAO';
@@ -40,6 +58,9 @@ type Consolidacao = {
   competencia: { ano: number; mes: number };
   revisao: number;
   versaoBeneficios: number;
+  fechadaEm: string | null;
+  fechadaPor: string | null;
+  fechadaComPendencias: boolean;
   envios: {
     grupoId: string; responsavel: 'ADM' | 'CENTRAL' | 'NENHUM';
     concluido: boolean; concluidoEm: string | null; concluidoPor: string | null;
@@ -75,6 +96,7 @@ async function lerErro(resposta: Response): Promise<string> {
 }
 const permiteDp = (perfil: Perfil) => perfil === 'ADMIN' || perfil === 'DP';
 const numeroApi = numeroDaMascara;
+const ITENS_POR_PAGINA = 20;
 
 export default function PaginaInicial() {
   const [fase, setFase] = useState<'verificando' | 'visitante' | 'autenticado'>('verificando');
@@ -93,15 +115,28 @@ export default function PaginaInicial() {
   const [salvando, setSalvando] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [selecionadosMassa, setSelecionadosMassa] = useState<string[]>([]);
+  const [barraLateralColapsada, setBarraLateralColapsada] = useState(false);
   const [campoMassaId, setCampoMassaId] = useState('');
   const [valorMassa, setValorMassa] = useState('');
   const [buscaFuncionarioConsolidacao, setBuscaFuncionarioConsolidacao] = useState('');
+  const [empresaFiltroId, setEmpresaFiltroId] = useState<string | null>(null);
+  const [paginaConsolidacao, setPaginaConsolidacao] = useState(1);
+  const [modalFechamento, setModalFechamento] = useState<{
+    revisao: number; pendencias: PendenciaFechamento[];
+  } | null>(null);
   const termoFuncionarioConsolidacao = buscaFuncionarioConsolidacao.trim().toLocaleLowerCase('pt-BR');
-  const linhasConsolidacaoFiltradas = consolidado?.abas.flatMap(empresa =>
-    empresa.funcionarios.map(linha => ({ empresa, linha })))
+  const linhasConsolidacaoFiltradas = consolidado?.abas
+    .filter(empresa => !empresaFiltroId || empresa.empresaContratanteId === empresaFiltroId)
+    .flatMap(empresa => empresa.funcionarios.map(linha => ({ empresa, linha })))
     .filter(({ linha }) => !termoFuncionarioConsolidacao ||
       linha.funcionario.nome.toLocaleLowerCase('pt-BR').includes(termoFuncionarioConsolidacao) ||
       linha.funcionario.cpf.includes(buscaFuncionarioConsolidacao.trim())) ?? [];
+  const totalPaginasConsolidacao = Math.max(1,
+    Math.ceil(linhasConsolidacaoFiltradas.length / ITENS_POR_PAGINA));
+  const paginaConsolidacaoAtual = Math.min(paginaConsolidacao, totalPaginasConsolidacao);
+  const inicioPaginaConsolidacao = (paginaConsolidacaoAtual - 1) * ITENS_POR_PAGINA;
+  const linhasConsolidacaoPagina = linhasConsolidacaoFiltradas.slice(
+    inicioPaginaConsolidacao, inicioPaginaConsolidacao + ITENS_POR_PAGINA);
 
   function salvarNavegacao(abaAtual: AbaNavegacao, competenciaId = competenciaSelecionada) {
     try {
@@ -243,6 +278,8 @@ export default function PaginaInicial() {
 
   async function abrirCompetencia(id: string) {
     setErro(''); setFeedback('');
+    setEmpresaFiltroId(null); setPaginaConsolidacao(1);
+    setEmpresaFiltroId(null);
     const resposta = await fetch('/api/competencias/' + encodeURIComponent(id) + '/consolidacao',
       { cache: 'no-store', credentials: 'include' });
     if (!resposta.ok) {
@@ -384,6 +421,58 @@ export default function PaginaInicial() {
       '/consolidacao', { cache: 'no-store', credentials: 'include' });
     if (!resposta.ok) throw new Error(await lerErro(resposta));
     setConsolidado(await resposta.json() as Consolidacao);
+    setModalFechamento(null);
+  }
+
+  async function fecharCompetencia(confirmarPendencias = false) {
+    if (!competenciaSelecionada || !consolidado || salvando) return;
+    const revisao = confirmarPendencias
+      ? modalFechamento?.revisao : consolidado.revisao;
+    if (revisao === undefined || revisao === null) return;
+    setSalvando(true); setErro(''); setFeedback('');
+    try {
+      const resposta = await fetch('/api/competencias/' +
+        encodeURIComponent(competenciaSelecionada) + '/fechar', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ versaoEsperada: revisao, confirmarPendencias }),
+      });
+      const dados = await resposta.json() as {
+        codigo?: string; erro?: string; revisao?: number; pendencias?: PendenciaFechamento[];
+      };
+      if (!resposta.ok && dados.codigo === 'PENDENCIAS' && dados.pendencias) {
+        setModalFechamento({ revisao: dados.revisao ?? revisao, pendencias: dados.pendencias });
+        return;
+      }
+      if (!resposta.ok) throw new Error(dados.erro ?? 'Não foi possível fechar a competência');
+      setModalFechamento(null); setEditando(null); setSelecionadosMassa([]);
+      await atualizarConsolidacao(competenciaSelecionada);
+      await carregarCompetencias();
+      setFeedback('Competência fechada. Os lançamentos estão bloqueados.');
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível fechar a competência');
+      if (competenciaSelecionada) await atualizarConsolidacao(competenciaSelecionada).catch(() => undefined);
+    } finally { setSalvando(false); }
+  }
+
+  async function reabrirCompetenciaAtual() {
+    if (!competenciaSelecionada || !consolidado || salvando) return;
+    if (!window.confirm('Reabrir a competência? Os setores poderão voltar a editar os lançamentos.')) return;
+    setSalvando(true); setErro(''); setFeedback('');
+    try {
+      const resposta = await fetch('/api/competencias/' +
+        encodeURIComponent(competenciaSelecionada) + '/reabrir', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ versaoEsperada: consolidado.revisao }),
+      });
+      if (!resposta.ok) throw new Error(await lerErro(resposta));
+      await atualizarConsolidacao(competenciaSelecionada);
+      await carregarCompetencias();
+      setFeedback('Competência reaberta para edição.');
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível reabrir a competência');
+    } finally { setSalvando(false); }
   }
 
   async function vincularCelula(funcionarioId: string, campoId: string) {
@@ -436,8 +525,8 @@ export default function PaginaInicial() {
   }
 
   if (fase === 'verificando') return (
-    <main className="tela-acesso">
-      <div className="cartao-acesso"><span className="logo-acesso">OF</span>
+    <main className="tela-acesso tela-acesso-verificacao">
+      <div className="cartao-acesso superficie-vidro"><span className="logo-acesso">OF</span>
         <h1>OdontoFolha</h1><p>Verificando a sessão...</p>
       </div>
     </main>
@@ -450,55 +539,66 @@ export default function PaginaInicial() {
           <strong>OdontoFolha</strong></div>
         <div className="mensagem-acesso">
           <span className="sobre">GRUPO ODONTOART</span>
-          <h1>Organização e clareza em cada competência.</h1>
+          <h1>Organização e clareza mês a mês.</h1>
           <p>Cadastros, benefícios, comissões e consolidação em um único ambiente protegido.</p>
         </div>
         <span className="rodape-acesso">Acesso restrito aos profissionais autorizados</span>
       </section>
       <section className="direita-acesso">
-        <div className="caixa-login">
+        <div className="caixa-login superficie-vidro">
           <span className="sobre">ACESSO CORPORATIVO</span>
           <h2>Entrar no OdontoFolha</h2>
           <p>Utilize as credenciais fornecidas pela administração do sistema.</p>
           <form className="formulario-login" onSubmit={entrar}>
             <label htmlFor="email">E-mail</label>
-            <input id="email" type="email" autoComplete="username" required
+            <input className="controle-vidro" id="email" type="email" autoComplete="username" required
               value={email} onChange={e => setEmail(e.target.value)}
               placeholder="usuario@empresa.com.br"/>
             <label htmlFor="senha">Senha</label>
-            <input id="senha" type="password" autoComplete="current-password" required
+            <input className="controle-vidro" id="senha" type="password" autoComplete="current-password" required
               value={senha} onChange={e => setSenha(e.target.value)}/>
             {erro && <p role="alert" className="erro">{erro}</p>}
             <button className="acao-principal" disabled={entrando} type="submit">
-              {entrando ? 'Autenticando...' : 'Entrar no sistema →'}
+              {entrando ? 'Autenticando...' : <>Entrar no sistema <ArrowRightIcon className="icone-inline" aria-hidden="true" /></>}
             </button>
           </form>
-          <p className="nota-seguranca">Sua sessão é validada pela API. Não há dados de folha armazenados neste navegador.</p>
         </div>
       </section>
     </main>
   );
 
   return (
-    <div className="aplicacao">
+    <div className={`aplicacao${barraLateralColapsada ? ' sidebar-recolhida' : ''}`}>
       <aside className="barra-lateral">
-        <div className="marca"><span className="logo-marca">OF</span>
-          <span><strong>OdontoFolha</strong><small>Grupo Odontoart</small></span>
+        <div className="marca"><span className="logo-marca" aria-label="OdontoFolha">OF</span>
+          <span className="identidade-marca"><strong>OdontoFolha</strong><small>Grupo Odontoart</small></span>
+          <button type="button" className="controle-barra-lateral"
+            aria-label={barraLateralColapsada ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+            title={barraLateralColapsada ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+            aria-expanded={!barraLateralColapsada} aria-controls="navegacao-principal"
+            onClick={() => setBarraLateralColapsada(atual => !atual)}>
+            <ChevronDoubleLeftIcon className="icone-navegacao" aria-hidden="true" />
+          </button>
         </div>
-        <div className="grupo-navegacao">
+        <nav className="grupo-navegacao" id="navegacao-principal" aria-label="Navegação principal">
           <p>ESPAÇO DE TRABALHO</p>
           <button className={aba === 'Painel' ? 'ativo' : ''}
-            onClick={() => navegar('Painel')}>▤ <span>Competências</span></button>
+            aria-label="Competências" title="Competências"
+            onClick={() => navegar('Painel')}><CalendarDaysIcon className="icone-navegacao" aria-hidden="true" /><span>Competências</span></button>
           {permiteDp(sessao!.perfil) && <button className={aba === 'Cadastros' ? 'ativo' : ''}
-            onClick={() => navegar('Cadastros')}>♙ <span>Cadastros</span></button>}
+            aria-label="Cadastros" title="Cadastros"
+            onClick={() => navegar('Cadastros')}><UserGroupIcon className="icone-navegacao" aria-hidden="true" /><span>Cadastros</span></button>}
           {permiteDp(sessao!.perfil) && <button className={aba === 'Configuração' ? 'ativo' : ''}
-            onClick={() => navegar('Configuração')}>◇ <span>Benefícios e comissões</span></button>}
+            aria-label="Benefícios e comissões" title="Benefícios e comissões"
+            onClick={() => navegar('Configuração')}><BanknotesIcon className="icone-navegacao" aria-hidden="true" /><span>Benefícios e comissões</span></button>}
           {permiteDp(sessao!.perfil) &&
             <button className={aba === 'Consolidação' ? 'ativo' : ''}
-              onClick={() => navegar('Consolidação')}>▦ <span>Consolidação</span></button>}
+              aria-label="Consolidação" title="Consolidação"
+              onClick={() => navegar('Consolidação')}><RectangleGroupIcon className="icone-navegacao" aria-hidden="true" /><span>Consolidação</span></button>}
           <button className={aba === 'Configurações' ? 'ativo' : ''}
-            onClick={() => navegar('Configurações')}>⚙ <span>Configurações</span></button>
-        </div>
+            aria-label="Configurações" title="Configurações"
+            onClick={() => navegar('Configurações')}><Cog6ToothIcon className="icone-navegacao" aria-hidden="true" /><span>Configurações</span></button>
+        </nav>
         <div className="rodape-lateral">
           <div className="perfil-atual">
             <div className="circulo-perfil">{sessao!.perfil.slice(0, 2)}</div>
@@ -506,12 +606,7 @@ export default function PaginaInicial() {
           </div>
           <button type="button" className="sair-lateral" onClick={() => void sair()}
             aria-label="Sair da conta" title="Sair da conta">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
-              strokeLinejoin="round" aria-hidden="true">
-              <path d="M10 17l5-5-5-5M15 12H3"/>
-              <path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/>
-            </svg>
+            <ArrowLeftOnRectangleIcon className="icone-navegacao" aria-hidden="true" />
             <span>Sair da conta</span>
           </button>
         </div>
@@ -523,8 +618,16 @@ export default function PaginaInicial() {
               : aba === 'Configuração' ? 'Benefícios e comissões'
                 : aba === 'Configurações' ? 'Configurações' : 'Consolidação mensal'}</h1></div>
 
+          {aba === 'Consolidação' && consolidado && permiteDp(sessao!.perfil) &&
+            (consolidado.fechadaEm ? <button type="button" className="botao-secundario controle-fechamento"
+              disabled={salvando} onClick={() => void reabrirCompetenciaAtual()}>
+              Reabrir competência
+            </button> : <button type="button" className="acao-principal controle-fechamento"
+              disabled={salvando} onClick={() => void fecharCompetencia()}>
+              Fechar competência
+            </button>)}
         </header>
-        <div className="conteudo-app">
+        <div className={`conteudo-app${aba === 'Painel' ? ' modulo-competencias' : ''}`}>
           {erro && <p role="alert" className="erro alerta-app">{erro}</p>}
           {feedback && <p role="status" className="feedback">{feedback}</p>}
           {aba === 'Configurações' ? <Configuracoes perfil={sessao!.perfil} /> : !permiteDp(sessao!.perfil) ? (
@@ -548,8 +651,8 @@ export default function PaginaInicial() {
                     onClick={() => void abrirCompetencia(c.id)}>
                     <span className="tag-competencia">COMPETÊNCIA</span>
                     <strong>{nomeMes(c.ano, c.mes)}</strong>
-                    <small>Revisão {c.revisao} · Abrir detalhes</small>
-                    <span className="seta-competencia">↗</span>
+                    <small>Revisão {c.revisao} · {c.fechadaEm ? 'Fechada · ' : ''}Abrir detalhes</small>
+                    <ArrowUpRightIcon className="seta-competencia" aria-hidden="true" />
                   </button>)}
               </div>
               {!competencias.length && <div className="painel-app estado-vazio">
@@ -567,23 +670,60 @@ export default function PaginaInicial() {
           ) : (
             <section className="painel-app consolidacao-painel">
               <div className="titulo-secao consolidacao-cabecalho">
-                <div><span className="sobre">CONSOLIDADO · {consolidado.revisao}ª REVISÃO</span>
+                <div><span className="sobre">CONSOLIDADO</span>
                   <h2>{nomeMes(consolidado.competencia.ano, consolidado.competencia.mes)}</h2>
                   <p>Salário contratual + proventos monetários − descontos monetários.</p>
                 </div>
                 <div className="acoes-secao consolidacao-acoes">
                   <label className="filtro-funcionario busca-cabecalho">Buscar funcionário
                     <input type="search" value={buscaFuncionarioConsolidacao}
-                      onChange={evento => setBuscaFuncionarioConsolidacao(evento.target.value)}
+                      onChange={evento => {
+                        setBuscaFuncionarioConsolidacao(evento.target.value);
+                        setPaginaConsolidacao(1);
+                      }}
                       placeholder="Digite o nome ou CPF" autoComplete="off" />
                   </label>
-                  <button className="botao-secundario" onClick={() => navegar('Painel')}>← Voltar</button>
+                  <button className="botao-secundario" onClick={() => navegar('Painel')}><ArrowLeftIcon className="icone-inline" aria-hidden="true" /> Voltar</button>
                   <a className="acao-principal" href={'/api/competencias/' +
                     encodeURIComponent(competenciaSelecionada ?? '') + '/exportacao.xlsx'}>
-                    ↓ Exportar XLSX
+                    <ArrowDownTrayIcon className="icone-inline" aria-hidden="true" /> Exportar XLSX
                   </a>
                 </div>
               </div>
+              {consolidado.fechadaEm && <p className="competencia-fechada-aviso" role="status">
+                Competência fechada em {new Intl.DateTimeFormat('pt-BR', {
+                  dateStyle: 'short', timeStyle: 'short',
+                }).format(new Date(consolidado.fechadaEm))}.
+                {consolidado.fechadaComPendencias && ' Foi fechada com pendências.'}
+                {' '}Os lançamentos estão bloqueados.
+              </p>}
+              <section className="totais-empresa" aria-label="Totais por empresa">
+                {consolidado.abas.map(empresa => {
+                  const selecionado = empresaFiltroId === empresa.empresaContratanteId;
+                  const nomeEmpresa = consolidado.nomes.empresas[empresa.empresaContratanteId] ?? 'Não identificada';
+                  return <button type="button" className="cartao-total-empresa"
+                    aria-pressed={selecionado}
+                    aria-label={`Filtrar funcionários da empresa ${nomeEmpresa}`}
+                    key={empresa.empresaContratanteId}
+                    onClick={() => {
+                      setEmpresaFiltroId(atual =>
+                        atual === empresa.empresaContratanteId ? null : empresa.empresaContratanteId);
+                      setPaginaConsolidacao(1);
+                    }}>
+                  <span>Total por empresa</span>
+                  <strong className="nome-total-empresa">{nomeEmpresa}</strong>
+                  <div className="valor-total-empresa">
+                    <strong>{dinheiro(empresa.totalAritmetico)}</strong>
+                    {empresa.parcial && <span className="selo-total-parcial">Parcial</span>}
+                  </div>
+                  </button>;
+                })}
+              </section>
+              {empresaFiltroId && <p className="filtro-empresa-ativo" role="status">
+                Exibindo {linhasConsolidacaoFiltradas.length} funcionário(s) de{' '}
+                {consolidado.nomes.empresas[empresaFiltroId] ?? 'empresa não identificada'}.
+                {' '}Clique no card novamente para limpar o filtro.
+              </p>}
               {!!(consolidado.envios ?? []).filter(envio => envio.responsavel !== 'NENHUM').length &&
                 <details className="envios-consolidacao">
                   <summary>Envios de comissões · {(consolidado.envios ?? []).filter(envio =>
@@ -593,91 +733,126 @@ export default function PaginaInicial() {
                       .map(envio => <div key={envio.grupoId} className="feedback">
                         <strong>{consolidado.colunas.find(c => c.grupoId === envio.grupoId)?.grupoNome ?? 'Comissão'}</strong>
                         {' · '}{envio.responsavel} · {envio.concluido ? 'Concluída' : 'Pendente'}
-                        {envio.concluido && <button className="botao-secundario" disabled={salvando}
+                        {envio.concluido && <button className="botao-secundario"
+                          disabled={salvando || !!consolidado.fechadaEm}
                           onClick={() => void reabrirComissao(envio.grupoId)}>Reabrir comissão</button>}
                       </div>)}
                   </div>
                 </details>}
               <p className="orientacao-tabela">Edição: use o lápis. Enter/Tab salva; Esc desfaz. Pendências ficam em branco; zero é explícito.</p>
-              <details className="edicao-massa" aria-label="Aplicar o mesmo valor a vários funcionários">
+              {!consolidado.fechadaEm && <details className="edicao-massa" aria-label="Aplicar o mesmo valor a vários funcionários">
                 <summary className="edicao-massa-resumo">
                   <strong>Edição em massa</strong>
                   <span>{selecionadosMassa.length} funcionário(s) selecionado(s)</span>
                 </summary>
                 <div className="edicao-massa-conteudo">
-                <div className="edicao-massa-topo">
-                  <button type="button" className="botao-secundario" disabled={salvando}
-                    onClick={() => setSelecionadosMassa(consolidado.abas.flatMap(a =>
-                      a.funcionarios.filter(l => !campoMassaId ||
-                        l.celulas[campoMassaId]?.situacao !== 'nao_aplicavel')
-                        .map(l => l.funcionario.id)))}>Selecionar todos</button>
-                  <button type="button" className="botao-secundario" disabled={salvando}
-                    onClick={() => setSelecionadosMassa([])}>Limpar selecao</button>
+                  <div className="edicao-massa-selecao">
+                    <button type="button" className="botao-secundario" disabled={salvando}
+                      onClick={() => setSelecionadosMassa(consolidado.abas.flatMap(a =>
+                        a.funcionarios.filter(l => !campoMassaId ||
+                          l.celulas[campoMassaId]?.situacao !== 'nao_aplicavel')
+                          .map(l => l.funcionario.id)))}>Selecionar todos</button>
+                    <button type="button" className="botao-secundario" disabled={salvando}
+                      onClick={() => setSelecionadosMassa([])}>Limpar selecao</button>
+                  </div>
+                  <div className="edicao-massa-campos">
+                    <label>Campo
+                      <select value={campoMassaId} disabled={salvando}
+                        onChange={evento => { setCampoMassaId(evento.target.value); setValorMassa(''); }}>
+                        <option value="">Selecione beneficio ou comissao</option>
+                        {consolidado.colunas.map(c => <option key={c.id} value={c.id}>{c.grupoNome} - {c.nome}</option>)}
+                      </select>
+                    </label>
+                    {(() => {
+                      const campo = consolidado.colunas.find(c => c.id === campoMassaId);
+                      if (!campo) return null;
+                      const numerico = campo.tipo === 'moeda' || campo.tipo === 'percentual';
+                      return <label>Valor
+                        <span className="entrada-com-mascara">
+                          <input type={campo.tipo === 'data' ? 'date' : campo.tipo === 'horario' ? 'time' : 'text'}
+                            inputMode={numerico ? 'decimal' : undefined} value={valorMassa} disabled={salvando}
+                            onFocus={evento => {
+                              if (numerico) setValorMassa(prepararMascaraParaEdicao(evento.currentTarget));
+                            }}
+                            onChange={evento => setValorMassa(numerico
+                              ? atualizarMascaraComCursor(evento.currentTarget, campo.tipo as 'moeda' | 'percentual')
+                              : evento.target.value)}
+                            onBlur={() => { if (numerico) setValorMassa(atual =>
+                              mascaraFinal(atual, campo.tipo as 'moeda' | 'percentual')); }} />
+                        </span>
+                      </label>;
+                    })()}
+                    <button type="button" className="acao-principal" disabled={salvando ||
+                      !selecionadosMassa.length || !campoMassaId || !valorMassa.trim()}
+                      onClick={() => void aplicarValorEmMassa()}>
+                      {salvando ? 'Salvando...' : 'Aplicar aos selecionados'}
+                    </button>
+                    <p>Repita o mesmo valor em um campo de beneficio ou comissao. Datas e horarios usam o formato do navegador.</p>
+                  </div>
                 </div>
-                <label>Campo
-                  <select value={campoMassaId} disabled={salvando}
-                    onChange={evento => { setCampoMassaId(evento.target.value); setValorMassa(''); }}>
-                    <option value="">Selecione beneficio ou comissao</option>
-                    {consolidado.colunas.map(c => <option key={c.id} value={c.id}>{c.grupoNome} - {c.nome}</option>)}
-                  </select>
-                </label>
-                {(() => {
-                  const campo = consolidado.colunas.find(c => c.id === campoMassaId);
-                  if (!campo) return null;
-                  const numerico = campo.tipo === 'moeda' || campo.tipo === 'percentual';
-                  return <label>Valor
-                    <span className="entrada-com-mascara">
-                      <input type={campo.tipo === 'data' ? 'date' : campo.tipo === 'horario' ? 'time' : 'text'}
-                        inputMode={numerico ? 'decimal' : undefined} value={valorMassa} disabled={salvando}
-                        onFocus={evento => {
-                          if (numerico) setValorMassa(prepararMascaraParaEdicao(evento.currentTarget));
-                        }}
-                        onChange={evento => setValorMassa(numerico
-                          ? atualizarMascaraComCursor(evento.currentTarget, campo.tipo as 'moeda' | 'percentual')
-                          : evento.target.value)}
-                        onBlur={() => { if (numerico) setValorMassa(atual =>
-                          mascaraFinal(atual, campo.tipo as 'moeda' | 'percentual')); }} />
-                    </span>
-                  </label>;
-                })()}
-                <button type="button" className="acao-principal" disabled={salvando ||
-                  !selecionadosMassa.length || !campoMassaId || !valorMassa.trim()}
-                  onClick={() => void aplicarValorEmMassa()}>
-                  {salvando ? 'Salvando...' : 'Aplicar aos selecionados'}
-                </button>
-                <p>Repita o mesmo valor em um campo de beneficio ou comissao. Datas e horarios usam o formato do navegador.</p>
-                </div>
-              </details>
+              </details>}
               <div className="rolagem-tabela"><table className="tabela-principal">
                 <thead><tr>
-                  <th scope="col"><span className="sr-only">Selecionar funcionarios</span></th>
-                  <th>Empresa Contratante</th><th>Empresa Lotado</th>
-                  <th>Setor de Lotação</th><th>CPF</th><th>Nome</th>
-                  <th>Cargo</th><th>Admissão</th><th>Salário Contratual</th>
+                  <th scope="col">Funcionário</th>
                   {consolidado.colunas.map(c => <th key={c.id}
                     className={c.origem === 'BENEFICIO' ? 'th-beneficio' : 'th-comissao'}>
                     {c.grupoNome}<span>{c.nome}</span></th>)}
                   <th>Total aritmético</th><th>Ação</th>
                 </tr></thead>
-                <tbody>{linhasConsolidacaoFiltradas.map(({ linha }) => (
+                <tbody>{linhasConsolidacaoPagina.map(({ linha }) => (
                     <tr key={linha.funcionario.id}>
-                      <td><input type="checkbox" aria-label={'Selecionar ' + linha.funcionario.nome}
-                        checked={selecionadosMassa.includes(linha.funcionario.id)} disabled={salvando}
-                        onChange={evento => setSelecionadosMassa(atual => evento.target.checked
-                          ? [...atual, linha.funcionario.id] : atual.filter(id => id !== linha.funcionario.id))} /></td>
-                      <td>{consolidado.nomes.empresas[linha.funcionario.empresaContratanteId] ?? 'Empresa não identificada'}</td>
-                      <td>{consolidado.nomes.empresas[linha.funcionario.empresaLotadoId] ?? 'Empresa não identificada'}</td>
-                      <td>{consolidado.nomes.setores[linha.funcionario.setorLotacaoId] ?? 'Setor não identificado'}</td>
-                      <td className="codigo">{linha.funcionario.cpf}</td>
-                      <td className="nome-pessoa">{linha.funcionario.nome}</td>
-                      <td>{linha.funcionario.cargo}</td>
-                      <td>{linha.funcionario.admissao}</td>
-                      <td className="moeda">{dinheiro(linha.funcionario.salarioContratual)}</td>
+                      <td className="celula-funcionario-fixa">
+                        <article className="cartao-dados-funcionario">
+                          <div className="cabecalho-dados-funcionario">
+                            <input type="checkbox" aria-label={'Selecionar ' + linha.funcionario.nome}
+                              checked={selecionadosMassa.includes(linha.funcionario.id)} disabled={salvando || !!consolidado.fechadaEm}
+                              onChange={evento => setSelecionadosMassa(atual => evento.target.checked
+                                ? [...atual, linha.funcionario.id] : atual.filter(id => id !== linha.funcionario.id))} />
+                            <div className="dado-funcionario dado-nome-funcionario">
+                              <span>Nome</span><strong title={linha.funcionario.nome}>{linha.funcionario.nome}</strong>
+                            </div>
+                          </div>
+                          <dl className="grade-dados-funcionario">
+                            <div className="dado-funcionario">
+                              <dt>Empresa Contratante</dt>
+                              <dd title={consolidado.nomes.empresas[linha.funcionario.empresaContratanteId]}>
+                                {consolidado.nomes.empresas[linha.funcionario.empresaContratanteId] ?? 'Empresa não identificada'}
+                              </dd>
+                            </div>
+                            <div className="dado-funcionario">
+                              <dt>Empresa Lotado</dt>
+                              <dd title={consolidado.nomes.empresas[linha.funcionario.empresaLotadoId]}>
+                                {consolidado.nomes.empresas[linha.funcionario.empresaLotadoId] ?? 'Empresa não identificada'}
+                              </dd>
+                            </div>
+                            <div className="dado-funcionario">
+                              <dt>Setor de Lotação</dt>
+                              <dd title={consolidado.nomes.setores[linha.funcionario.setorLotacaoId]}>
+                                {consolidado.nomes.setores[linha.funcionario.setorLotacaoId] ?? 'Setor não identificado'}
+                              </dd>
+                            </div>
+                            <div className="dado-funcionario">
+                              <dt>Cargo</dt><dd title={linha.funcionario.cargo}>{linha.funcionario.cargo}</dd>
+                            </div>
+                            <div className="dado-funcionario">
+                              <dt>CPF</dt><dd className="codigo">{linha.funcionario.cpf}</dd>
+                            </div>
+                            <div className="dado-funcionario">
+                              <dt>Admissão</dt><dd>{formatarData(linha.funcionario.admissao)}</dd>
+                            </div>
+                            <div className="dado-funcionario dado-salario-funcionario">
+                              <dt>Salário Contratual</dt><dd className="moeda">
+                                {dinheiro(linha.funcionario.salarioContratual)}
+                              </dd>
+                            </div>
+                          </dl>
+                        </article>
+                      </td>
                       {consolidado.colunas.map(c => {
                         const cel = linha.celulas[c.id];
                         const valor = cel?.valor === null || cel?.valor === undefined
                           ? '' : String(cel.valor);
-                        const alteravel = editando === linha.funcionario.id &&
+                        const alteravel = !consolidado.fechadaEm && editando === linha.funcionario.id &&
                           cel?.situacao !== 'nao_aplicavel';
                         return <td key={c.id} className="celula-dinamica">
                           {alteravel ? (
@@ -707,44 +882,96 @@ export default function PaginaInicial() {
                             </span>
                           ) : cel?.situacao === 'nao_aplicavel'
                             ? (editando === linha.funcionario.id
-                              ? <button className="botao-secundario" disabled={salvando}
+                              ? <button className="botao-secundario" disabled={salvando || !!consolidado.fechadaEm}
                                 onClick={() => void vincularCelula(linha.funcionario.id, c.id)}>
                                 Vincular
                               </button>
                               : <span className="nao-aplicavel">—</span>)
                             : cel?.situacao === 'pendente' ? <span className="pendente">Pendente</span>
                               : c.tipo === 'moeda' && typeof cel.valor === 'number'
-                                ? dinheiro(cel.valor) : String(cel?.valor ?? '')}
+                                ? dinheiro(cel.valor) : c.tipo === 'data'
+                                  ? formatarData(String(cel?.valor ?? ''))
+                                  : String(cel?.valor ?? '')}
                         </td>;
                       })}
                       <td className="moeda forte">{dinheiro(linha.totalAritmetico)}
                         {linha.parcial && <span className="parcial">Parcial</span>}</td>
-                      <td><button className="botao-editar" disabled={salvando}
+                      <td><button className="botao-editar" disabled={salvando || !!consolidado.fechadaEm}
                         aria-label={'Editar linha de ' + linha.funcionario.nome}
                         onClick={() => setEditando(editando === linha.funcionario.id
                           ? null : linha.funcionario.id)}>
-                        {editando === linha.funcionario.id ? 'Concluir' : '✎'}
+                        {editando === linha.funcionario.id ? 'Concluir' : <PencilSquareIcon className="icone-inline" aria-hidden="true" />}
                       </button></td>
                     </tr>))}
                   {!linhasConsolidacaoFiltradas.length && <tr>
-                    <td colSpan={11 + consolidado.colunas.length} className="config-linha-vazia">
+                    <td colSpan={3 + consolidado.colunas.length} className="config-linha-vazia">
                       Nenhum funcionário encontrado.
                     </td>
                   </tr>}
                 </tbody>
-                <tfoot>{consolidado.abas.map(empresa => <tr key={empresa.empresaContratanteId}>
-                  <td colSpan={9 + consolidado.colunas.length}>Total por empresa {consolidado.nomes.empresas[empresa.empresaContratanteId] ?? 'Não identificada'}
-                    {empresa.parcial ? ' (parcial)' : ''}</td>
-                  <td className="moeda forte">{dinheiro(empresa.totalAritmetico)}</td>
-                  <td></td>
-                </tr>)}</tfoot>
               </table></div>
+              {linhasConsolidacaoFiltradas.length > 0 && <nav className="paginacao-consolidacao"
+                aria-label="Paginação de funcionários">
+                <span aria-live="polite">
+                  Exibindo {inicioPaginaConsolidacao + 1}–{Math.min(
+                    inicioPaginaConsolidacao + ITENS_POR_PAGINA,
+                    linhasConsolidacaoFiltradas.length)} de {linhasConsolidacaoFiltradas.length} funcionário(s)
+                </span>
+                {totalPaginasConsolidacao > 1 && <div>
+                  <button type="button" className="botao-secundario"
+                    aria-label="Página anterior" disabled={paginaConsolidacaoAtual <= 1}
+                    onClick={() => setPaginaConsolidacao(paginaConsolidacaoAtual - 1)}>
+                    Anterior
+                  </button>
+                  <span className="pagina-consolidacao-atual">
+                    Página {paginaConsolidacaoAtual} de {totalPaginasConsolidacao}
+                  </span>
+                  <button type="button" className="botao-secundario"
+                    aria-label="Próxima página" disabled={paginaConsolidacaoAtual >= totalPaginasConsolidacao}
+                    onClick={() => setPaginaConsolidacao(paginaConsolidacaoAtual + 1)}>
+                    Próxima
+                  </button>
+                </div>}
+              </nav>}
               <p className="legenda-rodape">Resultado exclusivamente aritmético. Não representa salário líquido oficial.</p>
             </section>
           )}
         </div>
         <footer className="rodape-app">OdontoFolha · Grupo Odontoart · Uso interno e restrito</footer>
       </div>
+      {modalFechamento && <div className="fechamento-sobreposicao"
+        onKeyDown={evento => {
+          if (evento.key === 'Escape' && !salvando) setModalFechamento(null);
+        }}>
+        <section className="fechamento-modal" role="dialog" aria-modal="true"
+          aria-labelledby="titulo-modal-fechamento" aria-describedby="descricao-modal-fechamento">
+          <header>
+            <span className="sobre">PENDÊNCIAS DA COMPETÊNCIA</span>
+            <h3 id="titulo-modal-fechamento">Ainda há lançamentos pendentes</h3>
+            <p id="descricao-modal-fechamento">
+              Confira os setores responsáveis. Você pode cancelar para solicitar os lançamentos
+              ou fechar a competência mesmo assim.
+            </p>
+          </header>
+          <ul className="fechamento-pendencias">
+            {modalFechamento.pendencias.map(item => <li key={item.responsavel}>
+              <div><strong>{item.responsavel}</strong>
+                <span>{item.quantidade} pendência(s)</span></div>
+              <ul>{item.grupos.map(grupo => <li key={grupo.nome}>
+                {grupo.nome}: {grupo.quantidade}
+              </li>)}</ul>
+            </li>)}
+          </ul>
+          <div className="fechamento-acoes">
+            <button type="button" className="botao-secundario" disabled={salvando}
+              autoFocus onClick={() => setModalFechamento(null)}>Cancelar</button>
+            <button type="button" className="acao-principal" disabled={salvando}
+              onClick={() => void fecharCompetencia(true)}>
+              {salvando ? 'Fechando...' : 'Fechar mesmo assim'}
+            </button>
+          </div>
+        </section>
+      </div>}
     </div>
   );
 }

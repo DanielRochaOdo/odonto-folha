@@ -56,6 +56,9 @@ export const competencias = pgTable('competencias', {
   revisao: bigint('revisao', { mode: 'number' }).notNull().default(0),
   criadaEm: timestamp('criada_em', { withTimezone: true }).notNull().defaultNow(),
   criadaPor: text('criada_por').notNull(),
+  fechadaEm: timestamp('fechada_em', { withTimezone: true }),
+  fechadaPor: text('fechada_por'),
+  fechadaComPendencias: boolean('fechada_com_pendencias').notNull().default(false),
 }, t => [uniqueIndex('competencias_ano_mes').on(t.ano, t.mes),
   check('competencias_mes_valido', sql.raw('mes BETWEEN 1 AND 12'))]);
 export const funcionariosCompetencia = pgTable('funcionarios_competencia', {

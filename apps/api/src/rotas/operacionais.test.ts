@@ -28,7 +28,8 @@ function ambiente(sessao: SessaoOperacional | null = null, conflito = false) {
     funcionariosAtivos: async () => new Set(['v1']),
     nomesExportacao: async () => ({ empresas: { e1: 'Odontoart Exemplo' }, setores: { s1: 'Atendimento' } }),
     obterBeneficios: async () => ({ versao: 0, bases: [], excecoes: [], auditoria: [] }),
-    listarCompetencias: async () => [{ id: '1', ano: 2026, mes: 10, revisao: estado.revisao }],
+    listarCompetencias: async () => [{ id: '1', ano: 2026, mes: 10, revisao: estado.revisao,
+      fechadaEm: estado.fechadaEm, fechadaComPendencias: estado.fechadaComPendencias }],
     abrirNovaCompetencia: async (ano, mes) => ({ id: 'nova', ano, mes, revisao: 0 }),
   });
   return { app, consultar: () => estado };
@@ -119,5 +120,35 @@ describe('Rotas operacionais protegidas, sem banco real', () => {
         modo: 'total', versaoEsperada: 0 }),
     });
     expect(invalido.status).toBe(400);
+  });
+  it('informa setores com pendências, fecha com confirmação e permite reabertura por DP/ADMIN', async () => {
+    const a = ambiente(dp);
+    const caminho = 'http://localhost/api/competencias/1/fechar';
+    const aviso = await a.app.request(caminho, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ versaoEsperada: 0 }),
+    });
+    expect(aviso.status).toBe(409);
+    expect(await aviso.json()).toMatchObject({ codigo: 'PENDENCIAS',
+      pendencias: [{ responsavel: 'ADM', quantidade: 1 }] });
+    const fechamento = await a.app.request(caminho, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ versaoEsperada: 0, confirmarPendencias: true }),
+    });
+    expect(fechamento.status).toBe(200);
+    expect(a.consultar()).toMatchObject({ fechadaComPendencias: true, fechadaPor: dp.usuarioId });
+    const negada = await ambiente(adm).app.request(
+      'http://localhost/api/competencias/1/reabrir', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ versaoEsperada: 1 }),
+      });
+    expect(negada.status).toBe(403);
+    const reabertura = await a.app.request('http://localhost/api/competencias/1/reabrir', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ versaoEsperada: 1 }),
+    });
+    expect(reabertura.status).toBe(200);
+    expect(a.consultar()).toMatchObject({ fechadaEm: null, fechadaPor: null,
+      fechadaComPendencias: false });
   });
 });

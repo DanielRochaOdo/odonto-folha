@@ -50,6 +50,12 @@ export function criarBeneficiosPostgres(conexao: ConexaoFolha) {
     return db.transaction(async tx => {
       // Serialização simples para alterações do catálogo, sem perda silenciosa.
       await tx.execute(sql`SELECT pg_advisory_xact_lock(9724101)`);
+      const competenciaAberta = await tx.execute(sql`
+        SELECT id FROM competencias
+        WHERE id = ${competenciaId} AND fechada_em IS NULL
+        FOR UPDATE
+      `);
+      if (!competenciaAberta.rows.length) return false;
       const [basesAtuais, excecoesAtuais] = await Promise.all([
         tx.select({ id: t.basesBeneficio.id }).from(t.basesBeneficio),
         tx.select({ id: t.excecoesBeneficio.id }).from(t.excecoesBeneficio),

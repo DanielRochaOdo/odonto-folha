@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { z } from '@odontofolha/contracts';
 import type { Perfil } from '@odontofolha/contracts';
 import type { EstadoCompetencia } from '../dominio/competencias';
-import { salvarLancamento, salvarLancamentosEmMassa, concluirComissao, reabrirComissao, definirVinculo } from '../dominio/competencias';
+import { salvarLancamento, salvarLancamentosEmMassa, concluirComissao, reabrirComissao,
+  definirVinculo, fecharCompetencia, reabrirCompetencia } from '../dominio/competencias';
 import { consolidarComBeneficios, type CatalogoBeneficios } from '../dominio/beneficios';
 import { gerarXlsx, type NomesExportacao } from '../dominio/exportacao-xlsx';
 import { podeEditarConsolidacao } from '../dominio/permissoes';
@@ -23,7 +24,8 @@ export type DependenciasOperacionais = {
   funcionariosAtivos: () => Promise<ReadonlySet<string>>;
   nomesExportacao: () => Promise<NomesExportacao>;
   obterBeneficios: () => Promise<CatalogoBeneficios>;
-  listarCompetencias: () => Promise<{ id: string; ano: number; mes: number; revisao: number }[]>;
+  listarCompetencias: () => Promise<{ id: string; ano: number; mes: number; revisao: number;
+    fechadaEm: string | null; fechadaComPendencias: boolean }[]>;
   abrirNovaCompetencia: (ano: number, mes: number, autorId: string) => Promise<{
     id: string; ano: number; mes: number; revisao: number;
   } | null>;
@@ -60,10 +62,46 @@ const schemaEnvio = z.object({
   versaoEsperada: z.number().int().nonnegative(),
   confirmarPendentes: z.boolean().optional(),
 }).strict();
+const schemaFechamento = z.object({
+  versaoEsperada: z.number().int().nonnegative(),
+  confirmarPendencias: z.boolean().optional(),
+}).strict();
+
+type PendenciaSetor = { responsavel: string; quantidade: number;
+  grupos: { nome: string; quantidade: number }[] };
+function agruparPendencias(
+  estado: EstadoCompetencia, catalogo: CatalogoBeneficios, funcionariosAtivos: ReadonlySet<string>,
+): PendenciaSetor[] {
+  const consolidado = consolidarComBeneficios(estado, catalogo, funcionariosAtivos);
+  const campos = new Map(consolidado.colunas.map(campo => [campo.id, campo]));
+  const responsaveis = new Map(estado.envios.map(envio => [envio.grupoId, envio.responsavel]));
+  const setores = new Map<string, Map<string, number>>();
+  for (const aba of consolidado.abas) for (const linha of aba.funcionarios) {
+    for (const [campoId, celula] of Object.entries(linha.celulas)) {
+      if (celula.situacao !== 'pendente') continue;
+      const campo = campos.get(campoId);
+      if (!campo) continue;
+      const responsavel = campo.origem === 'BENEFICIO' ? 'DP'
+        : responsaveis.get(campo.grupoId) === 'NENHUM'
+          ? 'DP/ADMIN (comissão sem setor definido)'
+          : responsaveis.get(campo.grupoId) ?? 'DP/ADMIN (responsável não definido)';
+      const grupos = setores.get(responsavel) ?? new Map<string, number>();
+      grupos.set(campo.grupoNome, (grupos.get(campo.grupoNome) ?? 0) + 1);
+      setores.set(responsavel, grupos);
+    }
+  }
+  return [...setores].map(([responsavel, grupos]) => ({ responsavel,
+    quantidade: [...grupos.values()].reduce((total, quantidade) => total + quantidade, 0),
+    grupos: [...grupos].map(([nome, quantidade]) => ({ nome, quantidade }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+  })).sort((a, b) => a.responsavel.localeCompare(b.responsavel, 'pt-BR'));
+}
 
 function erroDominio(e: unknown): { status: 400 | 403 | 409; mensagem: string } {
   const m = e instanceof Error ? e.message : 'Operação não permitida';
-  if (/Conflito/.test(m)) return { status: 409, mensagem: 'Conflito de edição: atualize a competência' };
+  if (/Conflito|Competência fechada/.test(m))
+    return { status: 409, mensagem: /Competência fechada/.test(m) ? m
+      : 'Conflito de edição: atualize a competência' };
   if (/Sem permissão|Somente DP|Perfil não autorizado|fora do escopo|bloqueada/.test(m))
     return { status: 403, mensagem: 'Operação não autorizada para este perfil' };
   return { status: 400, mensagem: m };
@@ -137,7 +175,58 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     return c.json({ ...consolidarComBeneficios(estado, await deps.obterBeneficios(), await deps.funcionariosAtivos()),
       revisao: estado.revisao, versaoBeneficios: (await deps.obterBeneficios()).versao,
-      envios: estado.envios, nomes: await deps.nomesExportacao() });
+      envios: estado.envios, nomes: await deps.nomesExportacao(),
+      fechadaEm: estado.fechadaEm, fechadaPor: estado.fechadaPor,
+      fechadaComPendencias: estado.fechadaComPendencias });
+  });
+
+  app.post('/competencias/:id/fechar', async c => {
+    const sessao = c.get('sessao') as SessaoOperacional;
+    if (!podeEditarConsolidacao(sessao.perfil))
+      return c.json({ erro: 'Somente DP/ADMIN pode fechar competência' }, 403);
+    const parsed = schemaFechamento.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ erro: 'Dados de fechamento inválidos' }, 400);
+    const id = c.req.param('id');
+    const estado = await deps.buscarCompetencia(id);
+    if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
+    if (estado.fechadaEm) return c.json({ erro: 'Competência já está fechada' }, 409);
+    const pendencias = agruparPendencias(estado, await deps.obterBeneficios(),
+      await deps.funcionariosAtivos());
+    if (pendencias.length && !parsed.data.confirmarPendencias)
+      return c.json({ codigo: 'PENDENCIAS', revisao: estado.revisao, pendencias }, 409);
+    try {
+      const novo = fecharCompetencia(estado, { id: sessao.usuarioId, perfil: sessao.perfil },
+        parsed.data.versaoEsperada, pendencias.length > 0);
+      if (!(await deps.salvarSeRevisao(id, estado.revisao, novo)))
+        return c.json({ codigo: 'CONFLITO', erro: 'A competência mudou. Atualize antes de fechar.' }, 409);
+      return c.json({ revisao: novo.revisao, fechadaEm: novo.fechadaEm,
+        fechadaComPendencias: novo.fechadaComPendencias });
+    } catch (e) {
+      const erro = erroDominio(e);
+      return c.json({ erro: erro.mensagem }, erro.status);
+    }
+  });
+
+  app.post('/competencias/:id/reabrir', async c => {
+    const sessao = c.get('sessao') as SessaoOperacional;
+    if (!podeEditarConsolidacao(sessao.perfil))
+      return c.json({ erro: 'Somente DP/ADMIN pode reabrir competência' }, 403);
+    const parsed = schemaFechamento.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ erro: 'Dados de reabertura inválidos' }, 400);
+    const id = c.req.param('id');
+    const estado = await deps.buscarCompetencia(id);
+    if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
+    try {
+      const novo = reabrirCompetencia(estado, { id: sessao.usuarioId, perfil: sessao.perfil },
+        parsed.data.versaoEsperada);
+      if (novo === estado) return c.json({ revisao: estado.revisao, fechadaEm: null });
+      if (!(await deps.salvarSeRevisao(id, estado.revisao, novo)))
+        return c.json({ codigo: 'CONFLITO', erro: 'A competência mudou. Atualize antes de reabrir.' }, 409);
+      return c.json({ revisao: novo.revisao, fechadaEm: null });
+    } catch (e) {
+      const erro = erroDominio(e);
+      return c.json({ erro: erro.mensagem }, erro.status);
+    }
   });
 
   app.get('/competencias/:id/comissoes/:grupo', async c => {

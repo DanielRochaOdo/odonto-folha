@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
+import { ArrowUpRightIcon } from '@heroicons/react/24/outline';
 import { atualizarMascaraComCursor, mascaraFinal, numeroDaMascara,
   prepararMascaraParaEdicao } from '../mascaras';
 type Grupo = {
@@ -93,7 +94,7 @@ export default function PainelSetor({perfil}:{perfil:'ADM'|'CENTRAL'}){
     <span className="tag-competencia">{mostrarMes(m)}</span>
     <strong>{g.nome}</strong>
     <small>{g.concluido?'Enviado e bloqueado':g.pendentes+' pendências'} · {g.responsavel}</small>
-    <span className="seta-competencia">↗</span>
+    <ArrowUpRightIcon className="seta-competencia" aria-hidden="true" />
    </button>))}
   </div>
   {!meses.some(m=>m.grupos.length)&&<div className="painel-app estado-vazio">

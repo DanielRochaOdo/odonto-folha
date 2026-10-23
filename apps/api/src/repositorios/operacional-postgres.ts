@@ -96,6 +96,9 @@ export function criarRepositorioPostgres(
         concluido: e.concluido, concluidoEm: e.concluidoEm?.toISOString() ?? null,
         concluidoPor: e.concluidoPor,
       })),
+      fechadaEm: competencia.fechadaEm?.toISOString() ?? null,
+      fechadaPor: competencia.fechadaPor,
+      fechadaComPendencias: competencia.fechadaComPendencias,
       revisao: competencia.revisao,
       auditoria: eventos.map(e => ({
         id: e.id, autorId: e.usuarioId, acao: e.acao, entidadeId: e.entidadeId,
@@ -112,7 +115,9 @@ export function criarRepositorioPostgres(
       throw new Error('Revisão resultante inválida para persistência');
     return db.transaction(async tx => {
       const atualizado = await tx.update(t.competencias)
-        .set({ revisao: estado.revisao })
+        .set({ revisao: estado.revisao, fechadaEm: estado.fechadaEm
+          ? new Date(estado.fechadaEm) : null, fechadaPor: estado.fechadaPor,
+          fechadaComPendencias: estado.fechadaComPendencias })
         .where(and(eq(t.competencias.id, id),
           eq(t.competencias.revisao, revisaoAnterior)))
         .returning({ id: t.competencias.id });
@@ -249,9 +254,12 @@ export function criarRepositorioPostgres(
       ano: t.competencias.ano,
       mes: t.competencias.mes,
       revisao: t.competencias.revisao,
+      fechadaEm: t.competencias.fechadaEm,
+      fechadaComPendencias: t.competencias.fechadaComPendencias,
     }).from(t.competencias)
       .orderBy(desc(t.competencias.ano), desc(t.competencias.mes));
-    return registros;
+    return registros.map(registro => ({ ...registro,
+      fechadaEm: registro.fechadaEm?.toISOString() ?? null }));
   }
 
   /**

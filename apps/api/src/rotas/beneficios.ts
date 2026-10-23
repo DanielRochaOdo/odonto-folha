@@ -41,7 +41,7 @@ const confirmarSchema = z.object({
 
 function motivo(error: unknown): { status: 400 | 409; texto: string } {
   const mensagem = error instanceof Error ? error.message : 'Operação inválida';
-  return /Conflito|desatualizada/.test(mensagem)
+  return /Conflito|desatualizada|Competência fechada/.test(mensagem)
     ? { status: 409, texto: 'Valores alterados; atualize a prévia antes de confirmar.' }
     : { status: 400, texto: mensagem };
 }
@@ -80,7 +80,7 @@ export function criarRotasBeneficios(
       const ok = await deps.beneficios.persistir(
         anterior, novo, competenciaId, c.get('sessao').usuarioId);
       return ok ? c.json({ versao: novo.versao, recorrente: true })
-        : c.json({ erro: 'Conflito de atualização' }, 409);
+        : c.json({ erro: 'Competência fechada ou catálogo alterado; atualize e tente novamente.' }, 409);
     } catch (e) {
       const m = motivo(e); return c.json({ erro: m.texto }, m.status);
     }
@@ -100,7 +100,7 @@ export function criarRotasBeneficios(
       const ok = await deps.beneficios.persistir(
         anterior, novo, competenciaId, c.get('sessao').usuarioId);
       return ok ? c.json({ versao: novo.versao, recorrente: false })
-        : c.json({ erro: 'Conflito de atualização' }, 409);
+        : c.json({ erro: 'Competência fechada ou catálogo alterado; atualize e tente novamente.' }, 409);
     } catch (e) {
       const m = motivo(e); return c.json({ erro: m.texto }, m.status);
     }
@@ -126,7 +126,7 @@ export function criarRotasBeneficios(
       const ok = await deps.beneficios.persistir(anterior, novo, competenciaId,
         c.get('sessao').usuarioId);
       return ok ? c.json({ versao: novo.versao, salvos: novo.versao - anterior.versao })
-        : c.json({ erro: 'Conflito de atualizaÃ§Ã£o' }, 409);
+        : c.json({ erro: 'Competência fechada ou catálogo alterado; atualize e tente novamente.' }, 409);
     } catch (e) {
       const m = motivo(e); return c.json({ erro: m.texto }, m.status);
     }
@@ -158,7 +158,7 @@ export function criarRotasBeneficios(
       const ok = await deps.beneficios.persistir(
         anterior, novo, competenciaId, c.get('sessao').usuarioId);
       return ok ? c.json({ versao: novo.versao, afetados: parsed.data.previa.linhas.length })
-        : c.json({ erro: 'Conflito de atualização' }, 409);
+        : c.json({ erro: 'Competência fechada ou catálogo alterado; atualize e tente novamente.' }, 409);
     } catch (e) {
       const m = motivo(e); return c.json({ erro: m.texto }, m.status);
     }
