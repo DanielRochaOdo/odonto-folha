@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from '@odontofolha/contracts';
 import type { Perfil } from '@odontofolha/contracts';
 import type { EstadoCompetencia } from '../dominio/competencias';
-import { salvarLancamento, concluirComissao, reabrirComissao, definirVinculo } from '../dominio/competencias';
+import { salvarLancamento, salvarLancamentosEmMassa, concluirComissao, reabrirComissao, definirVinculo } from '../dominio/competencias';
 import { consolidarComBeneficios, type CatalogoBeneficios } from '../dominio/beneficios';
 import { gerarXlsx, type NomesExportacao } from '../dominio/exportacao-xlsx';
 import { podeEditarConsolidacao } from '../dominio/permissoes';
@@ -42,6 +42,14 @@ const schemaVinculo = z.object({
 
 const schemaLancamento = z.object({
   funcionarioId: z.string().min(1),
+  campoId: z.string().min(1),
+  valor: z.union([z.number().finite(), z.string().min(1)]),
+  modo: z.enum(['total', 'parcela']),
+  versaoEsperada: z.number().int().nonnegative(),
+  confirmarSubstituicao: z.boolean().optional(),
+}).strict();
+const schemaLancamentosEmMassa = z.object({
+  funcionariosIds: z.array(z.string().min(1)).min(1).max(10000),
   campoId: z.string().min(1),
   valor: z.union([z.number().finite(), z.string().min(1)]),
   modo: z.enum(['total', 'parcela']),
@@ -179,6 +187,26 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
       if (!(await deps.salvarSeRevisao(c.req.param('id'), estado.revisao, resultado.estado)))
         return c.json({ erro: 'Conflito de edição: atualize a competência' }, 409);
       return c.json({ revisao: resultado.estado.revisao, avisos: resultado.avisos });
+    } catch (e) {
+      const erro = erroDominio(e);
+      return c.json({ erro: erro.mensagem }, erro.status);
+    }
+  });
+
+  app.post('/competencias/:id/lancamentos-em-massa', async c => {
+    const sessao = c.get('sessao') as SessaoOperacional;
+    const parsed = schemaLancamentosEmMassa.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ erro: 'Dados de lanÃ§amento em massa invÃ¡lidos' }, 400);
+    const id = c.req.param('id');
+    const estado = await deps.buscarCompetencia(id);
+    if (!estado) return c.json({ erro: 'CompetÃªncia nÃ£o encontrada' }, 404);
+    try {
+      const resultado = salvarLancamentosEmMassa(estado, parsed.data,
+        { id: sessao.usuarioId, perfil: sessao.perfil });
+      if (!(await deps.salvarSeRevisao(id, estado.revisao, resultado.estado)))
+        return c.json({ erro: 'Conflito de ediÃ§Ã£o: atualize a competÃªncia' }, 409);
+      return c.json({ revisao: resultado.estado.revisao, avisos: resultado.avisos,
+        salvos: parsed.data.funcionariosIds.length });
     } catch (e) {
       const erro = erroDominio(e);
       return c.json({ erro: erro.mensagem }, erro.status);

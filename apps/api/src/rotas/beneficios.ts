@@ -13,6 +13,11 @@ const valorSchema = z.object({
   valor: z.union([z.number().finite(), z.string().min(1)]),
   versaoEsperada: z.number().int().nonnegative(),
 }).strict();
+const valorMassaSchema = z.object({
+  funcionariosIds: z.array(uuid).min(1).max(10000), campoId: uuid,
+  valor: z.union([z.number().finite(), z.string().min(1)]),
+  acao: z.enum(['base', 'excecao']), versaoEsperada: z.number().int().nonnegative(),
+}).strict();
 const previaSchema = z.object({
   campoId: uuid,
   funcionariosIds: z.array(uuid).min(1).max(10000),
@@ -96,6 +101,32 @@ export function criarRotasBeneficios(
         anterior, novo, competenciaId, c.get('sessao').usuarioId);
       return ok ? c.json({ versao: novo.versao, recorrente: false })
         : c.json({ erro: 'Conflito de atualização' }, 409);
+    } catch (e) {
+      const m = motivo(e); return c.json({ erro: m.texto }, m.status);
+    }
+  });
+  app.post('/beneficios/:competenciaId/valores-em-massa', async c => {
+    const parsed = valorMassaSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ erro: 'Dados invÃ¡lidos para aplicaÃ§Ã£o em massa' }, 400);
+    const competenciaId = c.req.param('competenciaId');
+    const estado = await deps.buscarCompetencia(competenciaId);
+    if (!estado) return c.json({ erro: 'CompetÃªncia inexistente' }, 404);
+    try {
+      const anterior = await deps.beneficios.carregar();
+      if (anterior.versao !== parsed.data.versaoEsperada)
+        return c.json({ erro: 'Valores alterados; atualize a competÃªncia.' }, 409);
+      let novo = anterior;
+      for (const funcionarioId of [...new Set(parsed.data.funcionariosIds)]) {
+        novo = parsed.data.acao === 'base'
+          ? atualizarBaseRecorrente(novo, estado, funcionarioId, parsed.data.campoId,
+            parsed.data.valor, { id: c.get('sessao').usuarioId, perfil: c.get('sessao').perfil }, novo.versao)
+          : definirExcecaoMensal(novo, estado, funcionarioId, parsed.data.campoId,
+            parsed.data.valor, { id: c.get('sessao').usuarioId, perfil: c.get('sessao').perfil }, novo.versao);
+      }
+      const ok = await deps.beneficios.persistir(anterior, novo, competenciaId,
+        c.get('sessao').usuarioId);
+      return ok ? c.json({ versao: novo.versao, salvos: novo.versao - anterior.versao })
+        : c.json({ erro: 'Conflito de atualizaÃ§Ã£o' }, 409);
     } catch (e) {
       const m = motivo(e); return c.json({ erro: m.texto }, m.status);
     }

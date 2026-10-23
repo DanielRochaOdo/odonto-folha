@@ -1,5 +1,7 @@
 'use client';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { atualizarMascaraComCursor, mascaraFinal, numeroDaMascara,
+  prepararMascaraParaEdicao } from '../mascaras';
 type Grupo = {
  id:string; nome:string; responsavel:string; concluido:boolean; pendentes:number;
 };
@@ -13,7 +15,7 @@ function mostrarMes(m:Mes){return m.mes.toString().padStart(2,'0')+'/'+m.ano;}
 async function json<T>(url:string,options?:RequestInit):Promise<T>{
  const r=await fetch(url,{credentials:'include',cache:'no-store',...options});
  if(!r.ok){let message='Operação não concluída';
- try{const x=await r.json() as {erro?:string};message=x.erro??message;}catch{}
+ try{const x=await r.json() as {erro?:string};message=x.erro??message;}catch{ /* resposta sem JSON */ }
  throw Error(message);}return r.json() as Promise<T>;
 }
 const post=<T,>(url:string,body:object)=>json<T>(url,{method:'POST',
@@ -23,6 +25,7 @@ export default function PainelSetor({perfil}:{perfil:'ADM'|'CENTRAL'}){
  const [mesId,setMesId]=useState('');
  const [grupoId,setGrupoId]=useState('');
  const [detalhe,setDetalhe]=useState<Detalhe|null>(null);
+ const [buscaFuncionario,setBuscaFuncionario]=useState('');
  const [modo,setModo]=useState<'total'|'parcela'>('total');
  const [erro,setErro]=useState('');
  const [aviso,setAviso]=useState('');
@@ -37,6 +40,7 @@ export default function PainelSetor({perfil}:{perfil:'ADM'|'CENTRAL'}){
  },[listar]);
  async function selecionar(id:string,gid:string){
   setErro('');setAviso('');setMesId(id);setGrupoId(gid);
+  setBuscaFuncionario('');
   try{const d=await json<Detalhe>('/api/competencias/'+id+'/comissoes/'+gid);setDetalhe(d);}
   catch(e){setErro(e instanceof Error?e.message:'Erro ao abrir comissão');}
  }
@@ -45,7 +49,10 @@ export default function PainelSetor({perfil}:{perfil:'ADM'|'CENTRAL'}){
   const atual=campo.valor===null?'':String(campo.valor);
   if(texto===atual&&modo==='total')return;
   if(texto.trim()==='')return;
-  const valor=campo.tipo==='moeda'||campo.tipo==='percentual'?Number(texto):texto;
+  const valor=campo.tipo==='moeda'||campo.tipo==='percentual'
+   ?numeroDaMascara(texto):texto;
+  if(modo==='total'&&(campo.tipo==='moeda'||campo.tipo==='percentual')&&
+   typeof campo.valor==='number'&&valor===campo.valor)return;
   if(typeof valor==='number'&&!Number.isFinite(valor)){setErro('Valor inválido');return;}
   const confirmarSubstituicao=modo==='total'&&!campo.pendente
     ? window.confirm('Substituir os lançamentos anteriores por um total direto? O histórico será preservado.')
@@ -100,36 +107,61 @@ export default function PainelSetor({perfil}:{perfil:'ADM'|'CENTRAL'}){
       <p>{detalhe.concluido?'Envio concluído · somente leitura':
          'Registre valores e conclua o envio quando terminar'}</p>
      </div>
-     {!detalhe.concluido&&<button disabled={ocupado} className="acao-principal"
-       onClick={()=>void concluir()}>Concluir envio</button>}
+     <div className="acoes-cabecalho-comissao">
+      {!detalhe.concluido&&<button disabled={ocupado} className="acao-principal"
+        onClick={()=>void concluir()}>Concluir envio</button>}
+     </div>
     </div>
-    {!detalhe.concluido&&<label className="modo-comissao">Modo de lançamento
-      <select value={modo} onChange={e=>setModo(e.target.value as 'total'|'parcela')}>
-      <option value="total">Total direto</option>
-      <option value="parcela">Adicionar parcela</option>
-     </select></label>}
+    <div className="controles-comissao">
+     {!detalhe.concluido&&<label className="modo-comissao">Modo de lançamento
+       <select value={modo} onChange={e=>setModo(e.target.value as 'total'|'parcela')}>
+        <option value="total">Total direto</option>
+        <option value="parcela">Adicionar parcela</option>
+       </select>
+      </label>}
+     <label className="filtro-funcionario busca-inline-comissao">Buscar funcionário
+      <input type="search" value={buscaFuncionario}
+       onChange={e=>setBuscaFuncionario(e.target.value)}
+       placeholder="Digite o nome" autoComplete="off" />
+     </label>
+    </div>
     <div className="rolagem-tabela">
      <table className="tabela-principal"><thead><tr><th>Funcionário</th>
       {Array.from(new Map(detalhe.funcionarios.flatMap(p=>p.campos)
        .map(c=>[c.id,c.nome])).entries()).map(([id,nome])=><th key={id}>{nome}</th>)}
-     </tr></thead><tbody>{detalhe.funcionarios.map(p=><tr key={p.id}>
+     </tr></thead><tbody>{detalhe.funcionarios.filter(p=>p.nome.toLocaleLowerCase('pt-BR')
+       .includes(buscaFuncionario.trim().toLocaleLowerCase('pt-BR'))).map(p=><tr key={p.id}>
       <td className="nome-pessoa">{p.nome}</td>
       {Array.from(new Map(detalhe.funcionarios.flatMap(x=>x.campos)
        .map(c=>[c.id,c.nome])).keys()).map(id=>{
         const campo=p.campos.find(c=>c.id===id);
         return <td key={id}>{!campo?'—':detalhe.concluido
-         ? (campo.pendente?'Pendente':String(campo.valor??''))
-         : <input className="editor-celula" aria-label={campo.nome+' de '+p.nome}
+         ? (campo.pendente?'Pendente':campo.tipo==='moeda'||campo.tipo==='percentual'
+          ?mascaraFinal(String(campo.valor??''),campo.tipo):String(campo.valor??''))
+         : <span className="editor-valor-mascarado"><input className="editor-celula" aria-label={campo.nome+' de '+p.nome}
           disabled={ocupado} key={p.id+campo.id+detalhe.revisao}
-          defaultValue={modo==='parcela'?'':String(campo.valor??'')}
+          defaultValue={modo==='parcela'?'':(campo.tipo==='moeda'||campo.tipo==='percentual'
+          ?mascaraFinal(String(campo.valor??''),campo.tipo):String(campo.valor??''))}
           placeholder={campo.pendente?'Pendente':''}
-          type={campo.tipo==='data'?'date':campo.tipo==='horario'?'time':
-            campo.tipo==='moeda'||campo.tipo==='percentual'?'number':'text'}
-          step="0.01"
-          onBlur={e=>void salvar(p.id,campo,e.target.value)}
-          onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}} />}</td>;
+          type={campo.tipo==='data'?'date':campo.tipo==='horario'?'time':'text'}
+          inputMode={campo.tipo==='moeda'||campo.tipo==='percentual'?'decimal':undefined}
+          onFocus={e=>{if(campo.tipo==='moeda'||campo.tipo==='percentual')
+            prepararMascaraParaEdicao(e.currentTarget);}}
+          onChange={e=>{if(campo.tipo==='moeda'||campo.tipo==='percentual')
+            atualizarMascaraComCursor(e.currentTarget,campo.tipo as 'moeda'|'percentual');}}
+          onBlur={e=>{
+           const texto=campo.tipo==='moeda'||campo.tipo==='percentual'
+            ?mascaraFinal(e.currentTarget.value,campo.tipo):e.currentTarget.value;
+           e.currentTarget.value=texto;void salvar(p.id,campo,texto);
+          }}
+          onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}} />
+          </span>}</td>;
       })}
-     </tr>)}</tbody></table>
+     </tr>)}{!detalhe.funcionarios.some(p=>p.nome.toLocaleLowerCase('pt-BR')
+       .includes(buscaFuncionario.trim().toLocaleLowerCase('pt-BR')))&&<tr>
+       <td colSpan={Array.from(new Set(detalhe.funcionarios.flatMap(p=>p.campos.map(c=>c.id)))).length+1}
+        className="config-linha-vazia">Nenhum funcionário encontrado.</td>
+      </tr>}</tbody></table>
     </div>
    </div>}
  </section>;

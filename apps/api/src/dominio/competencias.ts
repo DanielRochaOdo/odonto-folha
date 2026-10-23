@@ -185,6 +185,26 @@ export function salvarLancamento(
     registro(estado, substitui ? 'LANCAMENTO_SUBSTITUIDO' : 'LANCAMENTO_CRIADO', novo.id, ator)),
     avisos };
 }
+
+/** Salva o mesmo valor em vÃ¡rios funcionÃ¡rios como uma Ãºnica revisÃ£o lÃ³gica. */
+export function salvarLancamentosEmMassa(
+  estado: EstadoCompetencia,
+  opcao: Omit<OpcaoLancamento, 'funcionarioId'> & { funcionariosIds: string[] },
+  ator: AtorFolha,
+): ResultadoEdicao {
+  const ids = [...new Set(opcao.funcionariosIds)];
+  if (!ids.length) throw new Error('Selecione pelo menos um funcionÃ¡rio');
+  let atual = estado;
+  const avisos: string[] = [];
+  for (const funcionarioId of ids) {
+    const resultado = salvarLancamento(atual, {
+      ...opcao, funcionarioId, versaoEsperada: atual.revisao,
+    }, ator);
+    atual = resultado.estado;
+    avisos.push(...resultado.avisos);
+  }
+  return { estado: { ...atual, revisao: estado.revisao + 1 }, avisos: [...new Set(avisos)] };
+}
 /** Desativação no mês preserva coluna/valores, mas bloqueia novos envios do setor. */
 export function definirBloqueioCampo(
   estado: EstadoCompetencia, campoId: string, bloqueado: boolean,

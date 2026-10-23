@@ -12,10 +12,10 @@ Sistema web desktop-first, uso interno do grupo, diversas empresas/unidades, 4 u
 Browser
    |
    v
-apps/web (Next.js / Vercel projeto A)
-   | HTTPS /api/* (roteamento a validar no G2)
+apps/web (Next.js / Vercel Service `web`)
+   | /api/* (roteamento público no projeto Services)
    v
-apps/api (Hono / Vercel projeto B)
+apps/api (Hono / Vercel Service `api`)
    | sessão, autorização, validação, regras, auditoria
    v
 packages/database (Drizzle / Neon PostgreSQL)
@@ -36,7 +36,7 @@ O frontend não recebe `DATABASE_URL`. O backend é responsável por transaçõe
 - Jobs idempotentes e polling na primeira versão; filas e WebSocket dependerão de necessidade demonstrada.
 - Logs técnicos temporários separados de trilha persistente de auditoria.
 - Arquivos XLSX/PDF terão armazenamento privado e autorização por download, ainda por definir.
-- Dois projetos Vercel no mesmo monorepo; conectar Neon e definir variáveis isoladas apenas com aprovação.
+- Um projeto Vercel com Services `web` e `api`, conforme a configuração em `vercel.json`; acesso ao Private Beta ainda precisa ser confirmado, e variáveis/deploy dependem de configuração e autorização.
 - Sem restrição de acesso por IP/rede corporativa. A proteção será por identidade/permissões.
 - RTO desejado 12h e RPO desejado 1h; não testados nesta etapa.
 

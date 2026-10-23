@@ -100,7 +100,7 @@ export function criarRotasConfiguracao(
     if (!id.success || !body.success)
       return c.json({ erro: 'Selecione pelo menos um funcionário cadastrado' }, 400);
     try {
-      return c.json(await deps.configuracao.vincularFuncionariosBeneficio(
+      return c.json(await deps.configuracao.vincularFuncionariosGrupo(
         id.data, body.data.funcionariosIds, c.get('sessao').usuarioId,
       ));
     } catch (e) {

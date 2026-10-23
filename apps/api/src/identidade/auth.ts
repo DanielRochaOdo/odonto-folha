@@ -21,7 +21,7 @@ export function criarIdentidade(
       // Cadastro fica sempre desabilitado na API HTTP.
       // A exceção é exclusiva do processo CLI de bootstrap, nunca do servidor.
       disableSignUp: !opcoes.cadastroInicialLocal,
-      minPasswordLength: 12,
+      minPasswordLength: 6,
     },
   });
   async function autenticar(cabecalhos: Headers): Promise<SessaoOperacional | null> {
