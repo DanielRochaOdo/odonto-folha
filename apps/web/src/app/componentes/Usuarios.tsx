@@ -16,6 +16,15 @@ async function mensagemResposta(resposta: Response): Promise<string> {
   return 'Não foi possível concluir a operação.';
 }
 
+async function buscarUsuarios(signal?: AbortSignal): Promise<Usuario[]> {
+  const resposta = await fetch('/api/usuarios', {
+    cache: 'no-store', credentials: 'include', signal,
+  });
+  if (!resposta.ok) throw new Error(await mensagemResposta(resposta));
+  const dados = await resposta.json() as { usuarios: Usuario[] };
+  return dados.usuarios;
+}
+
 export default function Usuarios() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [rascunho, setRascunho] = useState<RascunhoUsuario>(novoUsuarioVazio);
@@ -31,24 +40,24 @@ export default function Usuarios() {
   const dialogoRef = useRef<HTMLDialogElement>(null);
 
   const carregarUsuarios = useCallback(async (signal?: AbortSignal) => {
-    const resposta = await fetch('/api/usuarios', {
-      cache: 'no-store', credentials: 'include', signal,
-    });
-    if (!resposta.ok) throw new Error(await mensagemResposta(resposta));
-    const dados = await resposta.json() as { usuarios: Usuario[] };
-    setUsuarios(dados.usuarios);
+    setUsuarios(await buscarUsuarios(signal));
   }, []);
 
   useEffect(() => {
     const controle = new AbortController();
-    void carregarUsuarios(controle.signal).catch(e => {
-      if (!controle.signal.aborted) setErro(e instanceof Error
-        ? e.message : 'Não foi possível carregar os usuários.');
-    }).finally(() => {
-      if (!controle.signal.aborted) setCarregando(false);
-    });
+    void buscarUsuarios(controle.signal)
+      .then(lista => {
+        if (!controle.signal.aborted) setUsuarios(lista);
+      })
+      .catch(e => {
+        if (!controle.signal.aborted) setErro(e instanceof Error
+          ? e.message : 'Não foi possível carregar os usuários.');
+      })
+      .finally(() => {
+        if (!controle.signal.aborted) setCarregando(false);
+      });
     return () => controle.abort();
-  }, [carregarUsuarios]);
+  }, []);
 
   useEffect(() => {
     const dialogo = dialogoRef.current;
