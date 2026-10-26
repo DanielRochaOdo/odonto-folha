@@ -33,6 +33,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      MIGRATION_TARGET: ci
       DATABASE_URL: postgresql://postgres:senha-sintetica-apenas-ci@localhost:5432/odontofolha
       DIRECT_URL: postgresql://postgres:senha-sintetica-apenas-ci@localhost:5432/odontofolha
       BETTER_AUTH_SECRET: segredo-sintetico-temporario-apenas-para-ci-com-64-caracteres
