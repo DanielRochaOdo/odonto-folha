@@ -1,5 +1,11 @@
 export type TipoMascaraNumerica = 'moeda' | 'percentual';
 
+export function formatarCpf(texto: string): string {
+  const digitos = texto.replace(/\D/g, '');
+  if (digitos.length !== 11) return texto;
+  return digitos.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+}
+
 function textoNumerico(texto: string): string {
   return texto.replace(/R\$\s?/gi, '').replace(/%/g, '').replace(/\s/g, '')
     .replace(/[^\d,.-]/g, '');

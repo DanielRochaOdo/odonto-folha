@@ -154,6 +154,36 @@ export const excecoesBeneficio = pgTable('excecoes_beneficio', {
   autorId: text('autor_id').notNull(),
   criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
 }, t => [index('excecoes_beneficio_competencia_idx').on(t.competenciaId, t.vinculoId, t.campoId)]);
+/** Regras versionadas: cada alteração só passa a valer a partir da competência informada. */
+export const regrasDescontoBeneficio = pgTable('regras_desconto_beneficio', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campoOrigemId: uuid('campo_origem_id').notNull().references(() => camposDinamicos.id),
+  campoDescontoId: uuid('campo_desconto_id').notNull(),
+  nomeColuna: text('nome_coluna').notNull(),
+  percentualPadrao: numeric('percentual_padrao', { precision: 9, scale: 4 }).notNull(),
+  anoInicio: integer('ano_inicio').notNull(),
+  mesInicio: integer('mes_inicio').notNull(),
+  ativo: boolean('ativo').notNull(),
+  autorId: text('autor_id').notNull(),
+  criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+}, t => [index('regras_desconto_beneficio_vigencia_idx')
+  .on(t.campoOrigemId, t.anoInicio, t.mesInicio),
+  check('regras_desconto_beneficio_percentual_valido', sql.raw('percentual_padrao BETWEEN 0 AND 100')),
+  check('regras_desconto_beneficio_mes_valido', sql.raw('mes_inicio BETWEEN 1 AND 12'))]);
+/** Percentuais individuais recorrentes, também append-only e com vigência própria. */
+export const percentuaisDescontoBeneficio = pgTable('percentuais_desconto_beneficio', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  campoOrigemId: uuid('campo_origem_id').notNull().references(() => camposDinamicos.id),
+  vinculoId: uuid('vinculo_id').notNull().references(() => vinculosEmpregaticios.id),
+  percentual: numeric('percentual', { precision: 9, scale: 4 }).notNull(),
+  anoInicio: integer('ano_inicio').notNull(),
+  mesInicio: integer('mes_inicio').notNull(),
+  autorId: text('autor_id').notNull(),
+  criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+}, t => [index('percentuais_desconto_beneficio_vigencia_idx')
+  .on(t.campoOrigemId, t.vinculoId, t.anoInicio, t.mesInicio),
+  check('percentuais_desconto_beneficio_percentual_valido', sql.raw('percentual BETWEEN 0 AND 100')),
+  check('percentuais_desconto_beneficio_mes_valido', sql.raw('mes_inicio BETWEEN 1 AND 12'))]);
 export const enviosComissoes = pgTable('envios_comissoes', {
   competenciaId: uuid('competencia_id').notNull().references(() => competencias.id),
   grupoId: uuid('grupo_id').notNull().references(() => gruposDinamicos.id),

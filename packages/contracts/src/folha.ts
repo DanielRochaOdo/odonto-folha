@@ -40,6 +40,7 @@ export const campoDinamicoSchema = z.object({
   classificacao: classificacaoSchema,
   ordemGlobal: z.number().int().nonnegative(),
   criadoEm: competenciaSchema,
+  campoOrigemDesconto: textoObrigatorio.optional(),
 });
 
 /** Vínculos de funcionários aos campos válidos para a competência consultada. */

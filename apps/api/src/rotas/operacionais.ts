@@ -25,7 +25,7 @@ export type DependenciasOperacionais = {
   nomesExportacao: () => Promise<NomesExportacao>;
   obterBeneficios: () => Promise<CatalogoBeneficios>;
   listarCompetencias: () => Promise<{ id: string; ano: number; mes: number; revisao: number;
-    fechadaEm: string | null; fechadaComPendencias: boolean }[]>;
+    criadaEm?: string; fechadaEm: string | null; fechadaComPendencias: boolean }[]>;
   abrirNovaCompetencia: (ano: number, mes: number, autorId: string) => Promise<{
     id: string; ano: number; mes: number; revisao: number;
   } | null>;

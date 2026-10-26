@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { ArrowPathIcon, PencilSquareIcon, TrashIcon, UserMinusIcon } from '@heroicons/react/24/outline';
 import { atualizarMascaraComCursor, mascaraFinal, numeroDaMascara,
   prepararMascaraParaEdicao } from '../mascaras';
 
@@ -11,24 +12,34 @@ type Grupo = {
 };
 type Campo = {
   id: string; grupoId: string; nome: string; tipo: string;
-  classificacao: string; ordemGlobal: number; ativo: boolean;
+  classificacao: string; anoCriacao: number; mesCriacao: number;
+  ordemGlobal: number; ativo: boolean;
 };
+type RegraDesconto = { id: string; campoOrigemId: string; campoDescontoId: string;
+  nomeColuna: string; percentualPadrao: string | number; anoInicio: number; mesInicio: number;
+  ativo: boolean; criadoEm: string };
+type CampoEdicaoGrupo = Pick<Campo, 'id' | 'nome' | 'tipo' | 'classificacao' | 'ativo'> &
+  { vigencia: string };
 type Dados = {
   grupos: Grupo[]; campos: Campo[];
   funcionariosPorGrupo: Record<string, string[]>;
+  regrasDesconto: RegraDesconto[];
 };
 type Funcionario = { id: string; nome: string; ativo: boolean };
 type Cadastro = { funcionarios: Funcionario[] };
 type BasesBeneficio = {
   versao: number;
   campos: { id: string; nome: string; tipo: string }[];
+  descontos: { campoOrigemId: string; campoDescontoId: string;
+    nomeColuna: string; percentualPadrao: number }[];
   funcionarios: { id: string; nome: string; ativo: boolean;
-    valores: Record<string, number | string | null> }[];
+    valores: Record<string, number | string | null>;
+    percentuaisDesconto: Record<string, number> }[];
 };
 type Passo = 1 | 2 | 3;
 
 const inicio: Dados = {
-  grupos: [], campos: [], funcionariosPorGrupo: {},
+  grupos: [], campos: [], funcionariosPorGrupo: {}, regrasDesconto: [],
 
 };
 const informacoes: Record<Origem, { titulo: string; singular: string; explicacao: string }> = {
@@ -65,6 +76,22 @@ export default function ConfigCampos() {
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [aba, setAba] = useState<Origem>('BENEFICIO');
   const [grupoId, setGrupoId] = useState('');
+  const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
+  const [grupoEditando, setGrupoEditando] = useState<Grupo | null>(null);
+  const [nomeGrupoEditando, setNomeGrupoEditando] = useState('');
+  const [responsavelGrupoEditando, setResponsavelGrupoEditando] = useState<Responsavel>('NENHUM');
+  const [camposGrupoEditando, setCamposGrupoEditando] = useState<CampoEdicaoGrupo[]>([]);
+  const [funcionariosGrupoEditando, setFuncionariosGrupoEditando] = useState<string[]>([]);
+  const [buscaFuncionariosGrupoEditando, setBuscaFuncionariosGrupoEditando] = useState('');
+  const [campoEditando, setCampoEditando] = useState<Campo | null>(null);
+  const [nomeCampoEditando, setNomeCampoEditando] = useState('');
+  const [tipoCampoEditando, setTipoCampoEditando] = useState('moeda');
+  const [classificacaoCampoEditando, setClassificacaoCampoEditando] = useState('provento');
+  const [vigenciaCampoEditando, setVigenciaCampoEditando] = useState(mesAtual);
+  const [geraDesconto, setGeraDesconto] = useState(false);
+  const [nomeColunaDesconto, setNomeColunaDesconto] = useState('');
+  const [percentualPadraoDesconto, setPercentualPadraoDesconto] = useState('0');
+  const [vigenciaDesconto, setVigenciaDesconto] = useState(mesAtual);
   const [criacaoAberta, setCriacaoAberta] = useState(false);
   const [passo, setPasso] = useState<Passo>(1);
   const [nome, setNome] = useState('');
@@ -73,6 +100,10 @@ export default function ConfigCampos() {
   const [tipo, setTipo] = useState('moeda');
   const [classificacao, setClassificacao] = useState('provento');
   const [competencia, setCompetencia] = useState(mesAtual);
+  const [geraDescontoCriacao, setGeraDescontoCriacao] = useState(false);
+  const [nomeColunaDescontoCriacao, setNomeColunaDescontoCriacao] = useState('');
+  const [percentualDescontoCriacao, setPercentualDescontoCriacao] = useState('0');
+  const [vigenciaDescontoCriacao, setVigenciaDescontoCriacao] = useState(mesAtual);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [buscaFuncionario, setBuscaFuncionario] = useState('');
   const [campoAberto, setCampoAberto] = useState(false);
@@ -86,6 +117,8 @@ export default function ConfigCampos() {
   const [vigenciaBases, setVigenciaBases] = useState(mesAtual);
   const [valoresBases, setValoresBases] = useState<Record<string, string>>({});
   const [valoresBasesOriginais, setValoresBasesOriginais] = useState<Record<string, string>>({});
+  const [valoresPercentuaisDesconto, setValoresPercentuaisDesconto] = useState<Record<string, string>>({});
+  const [valoresPercentuaisOriginais, setValoresPercentuaisOriginais] = useState<Record<string, string>>({});
   const [buscaBases, setBuscaBases] = useState('');
   const [funcionariosSelecionadosBase, setFuncionariosSelecionadosBase] = useState<string[]>([]);
   const [campoBaseEmMassa, setCampoBaseEmMassa] = useState('');
@@ -99,6 +132,7 @@ export default function ConfigCampos() {
   const [selecionadosParaVincular, setSelecionadosParaVincular] = useState<string[]>([]);
   const [buscaVinculos, setBuscaVinculos] = useState('');
   const dialogoRef = useRef<HTMLDivElement>(null);
+  const dialogoEdicaoRef = useRef<HTMLFormElement>(null);
   const gatilhoRef = useRef<HTMLButtonElement>(null);
 
   async function carregar() {
@@ -153,15 +187,23 @@ export default function ConfigCampos() {
           return [chaveBase(funcionario.id, campo.id), valor === null ? ''
             : numerico ? mascaraFinal(String(valor), campo.tipo as 'moeda' | 'percentual') : String(valor)];
         })));
+      const percentuais = Object.fromEntries(resultado.funcionarios.flatMap(funcionario =>
+        resultado.descontos.map(desconto => [chaveBase(funcionario.id, desconto.campoOrigemId),
+          mascaraFinal(String(funcionario.percentuaisDesconto[desconto.campoOrigemId] ??
+            desconto.percentualPadrao), 'percentual')])));
       setBases(resultado);
       setValoresBases(valores);
       setValoresBasesOriginais(valores);
+      setValoresPercentuaisDesconto(percentuais);
+      setValoresPercentuaisOriginais(percentuais);
       return true;
     } catch (e) {
       setErroBases(mensagemErro(e));
       setBases(null);
       setValoresBases({});
       setValoresBasesOriginais({});
+      setValoresPercentuaisDesconto({});
+      setValoresPercentuaisOriginais({});
       return false;
     } finally {
       setCarregandoBases(false);
@@ -172,6 +214,7 @@ export default function ConfigCampos() {
     if (!grupoSelecionado || !bases || ocupado) return;
     let invalido = false;
     const valores: { funcionarioId: string; campoId: string; valor: number | string }[] = [];
+    const percentuaisDesconto: { funcionarioId: string; campoOrigemId: string; percentual: number }[] = [];
     for (const funcionario of bases.funcionarios) {
       for (const campo of bases.campos) {
         const chave = chaveBase(funcionario.id, campo.id);
@@ -188,12 +231,24 @@ export default function ConfigCampos() {
           valores.push({ funcionarioId: funcionario.id, campoId: campo.id, valor });
         }
       }
+      for (const desconto of bases.descontos) {
+        const chave = chaveBase(funcionario.id, desconto.campoOrigemId);
+        const entrada = valoresPercentuaisDesconto[chave]?.trim() ?? '';
+        if (!entrada || entrada === (valoresPercentuaisOriginais[chave] ?? '')) continue;
+        const percentual = numeroDaMascara(entrada);
+        if (!Number.isFinite(percentual) || percentual < 0 || percentual > 100) {
+          invalido = true;
+          continue;
+        }
+        percentuaisDesconto.push({ funcionarioId: funcionario.id,
+          campoOrigemId: desconto.campoOrigemId, percentual });
+      }
     }
     if (invalido) {
       setErroBases('Confira os valores numéricos. Moeda não pode ser negativa.');
       return;
     }
-    if (!valores.length) {
+    if (!valores.length && !percentuaisDesconto.length) {
       setAvisoBases('Nenhum valor novo para salvar.');
       return;
     }
@@ -203,13 +258,13 @@ export default function ConfigCampos() {
     try {
       const resposta = await enviar('/api/configuracao/grupos/' +
         encodeURIComponent(grupoSelecionado.id) + '/bases-beneficios', {
-        competencia: vigenciaBases, versaoEsperada: bases.versao, valores,
+        competencia: vigenciaBases, versaoEsperada: bases.versao, valores, percentuaisDesconto,
       });
       const resultado = await resposta.json() as { salvos: number };
       const atualizado = await carregarBasesBeneficio(grupoSelecionado.id, vigenciaBases);
       if (!atualizado) return;
       setAvisoBases(resultado.salvos
-        ? `${resultado.salvos} valor(es) recorrente(s) atualizado(s) a partir de ${mesNome(vigenciaBases)}.`
+        ? `${resultado.salvos} valor(es) ou percentual(is) atualizado(s) a partir de ${mesNome(vigenciaBases)}.`
         : 'Os valores já estavam atualizados.');
     } catch (e) {
       setErroBases(mensagemErro(e));
@@ -289,6 +344,10 @@ export default function ConfigCampos() {
     setTipo('moeda');
     setClassificacao('provento');
     setCompetencia(mesAtual());
+    setGeraDescontoCriacao(false);
+    setNomeColunaDescontoCriacao('');
+    setPercentualDescontoCriacao('0');
+    setVigenciaDescontoCriacao(mesAtual());
     setSelecionados([]);
     setBuscaFuncionario('');
     setPasso(1);
@@ -312,14 +371,18 @@ export default function ConfigCampos() {
     setAviso('');
   }
 
-  function lidarComTeclado(evento: KeyboardEvent<HTMLDivElement>) {
+  function lidarComTeclado(evento: KeyboardEvent<HTMLElement>) {
     if (evento.key === 'Escape') {
       evento.preventDefault();
-      fecharCriacao();
+      if (ocupado) return;
+      if (grupoEditando) setGrupoEditando(null);
+      else if (campoEditando) setCampoEditando(null);
+      else fecharCriacao();
       return;
     }
-    if (evento.key !== 'Tab' || !dialogoRef.current) return;
-    const elementos = Array.from(dialogoRef.current.querySelectorAll<HTMLElement>(
+    const dialogo = dialogoEdicaoRef.current ?? dialogoRef.current;
+    if (evento.key !== 'Tab' || !dialogo) return;
+    const elementos = Array.from(dialogo.querySelectorAll<HTMLElement>(
       'button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"]',
     )).filter(elemento => elemento.getClientRects().length > 0);
     if (elementos.length === 0) return;
@@ -359,6 +422,16 @@ export default function ConfigCampos() {
     if (ocupado) return;
     const vigencia = validarVigencia();
     if (!vigencia || !nome.trim() || !nomeCampo.trim()) return;
+    const [anoDesconto, mesDesconto] = vigenciaDescontoCriacao.split('-').map(Number);
+    const percentual = Number(percentualDescontoCriacao.replace(',', '.'));
+    if (aba === 'BENEFICIO' && tipo === 'moeda' && geraDescontoCriacao &&
+      (!nomeColunaDescontoCriacao.trim() || !anoDesconto || !mesDesconto || mesDesconto > 12 ||
+        anoDesconto * 12 + mesDesconto < Number(mesAtual().slice(0, 4)) * 12 + Number(mesAtual().slice(5, 7)) ||
+        !Number.isFinite(percentual) || percentual < 0 || percentual > 100)) {
+      setErroCriacao('Informe o nome da coluna, uma competência atual ou futura e um percentual entre 0 e 100.');
+      setPasso(2);
+      return;
+    }
     setOcupado(true);
     setErroCriacao('');
     try {
@@ -366,6 +439,12 @@ export default function ConfigCampos() {
         nome: nome.trim(), origem: aba,
         responsavel: aba === 'BENEFICIO' ? 'NENHUM' : responsavel,
         campo: { nome: nomeCampo.trim(), tipo, classificacao, ...vigencia },
+        ...(aba === 'BENEFICIO' && tipo === 'moeda' && geraDescontoCriacao ? {
+          descontoBeneficio: {
+            nomeColuna: nomeColunaDescontoCriacao.trim(), percentualPadrao: percentual,
+            ano: anoDesconto, mes: mesDesconto,
+          },
+        } : {}),
         funcionariosIds: selecionados,
       });
       const criado = await resposta.json() as { id: string };
@@ -414,6 +493,7 @@ export default function ConfigCampos() {
 
   async function alterarStatus(campo: Campo) {
     if (ocupado) return;
+    if (campo.ativo && !window.confirm(`Excluir o campo “${campo.nome}” dos cadastros ativos? Ele será arquivado para novos lançamentos; valores e competências históricos serão preservados.`)) return;
     setOcupado(true);
     setErro('');
     setAviso('');
@@ -421,7 +501,7 @@ export default function ConfigCampos() {
       await enviar('/api/configuracao/campos/' + encodeURIComponent(campo.id) + '/status',
         { ativo: !campo.ativo });
       await carregar();
-      setAviso(campo.ativo ? 'Campo desativado.' : 'Campo ativado.');
+      setAviso(campo.ativo ? 'Campo excluído dos ativos e arquivado com o histórico preservado.' : 'Campo restaurado.');
     } catch (e) {
       setErro(mensagemErro(e));
     } finally {
@@ -429,7 +509,138 @@ export default function ConfigCampos() {
     }
   }
 
+  function iniciarEdicaoGrupo(grupo: Grupo) {
+    setGrupoEditando(grupo);
+    setNomeGrupoEditando(grupo.nome);
+    setResponsavelGrupoEditando(grupo.responsavel);
+    setCamposGrupoEditando(dados.campos.filter(campo => campo.grupoId === grupo.id)
+      .map(({ id, nome, tipo, classificacao, anoCriacao, mesCriacao, ativo }) => ({
+        id, nome, tipo, classificacao, ativo,
+        vigencia: `${anoCriacao}-${String(mesCriacao).padStart(2, '0')}`,
+      })));
+    setFuncionariosGrupoEditando(dados.funcionariosPorGrupo[grupo.id] ?? []);
+    setBuscaFuncionariosGrupoEditando('');
+    setErro('');
+    setAviso('');
+  }
+
+  async function salvarEdicaoGrupo(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    if (!grupoEditando || ocupado) return;
+    setOcupado(true); setErro(''); setAviso('');
+    try {
+      await enviar('/api/configuracao/grupos/' + encodeURIComponent(grupoEditando.id) + '/editar-completo', {
+        nome: nomeGrupoEditando.trim(), responsavel: grupoEditando.origem === 'BENEFICIO'
+          ? 'NENHUM' : responsavelGrupoEditando,
+        campos: camposGrupoEditando.map(campo => {
+          const [ano, mes] = campo.vigencia.split('-').map(Number);
+          return { id: campo.id, nome: campo.nome.trim(), tipo: campo.tipo,
+            classificacao: campo.classificacao, ano, mes, ativo: campo.ativo };
+        }),
+        funcionariosIds: funcionariosGrupoEditando,
+      });
+      setGrupoEditando(null);
+      await carregar();
+      setAviso('Cadastro, campos e funcionários vinculados atualizados.');
+    } catch (e) { setErro(mensagemErro(e)); }
+    finally { setOcupado(false); }
+  }
+
+  async function alterarStatusGrupo(grupo: Grupo) {
+    if (ocupado) return;
+    const ativar = !grupo.ativo;
+    const mensagem = ativar
+      ? `Restaurar ${grupo.origem === 'BENEFICIO' ? 'o benefício' : 'a comissão'} “${grupo.nome}”?`
+      : `Excluir “${grupo.nome}” dos cadastros ativos? O item será arquivado para novos lançamentos, e seu histórico será preservado. É possível restaurá-lo depois.`;
+    if (!window.confirm(mensagem)) return;
+    setOcupado(true); setErro(''); setAviso('');
+    try {
+      await enviar('/api/configuracao/grupos/' + encodeURIComponent(grupo.id) + '/status', { ativo: ativar });
+      if (!ativar && grupoId === grupo.id) setGrupoId('');
+      await carregar();
+      setAviso(ativar ? 'Cadastro restaurado.' : 'Cadastro excluído dos ativos e arquivado com o histórico preservado.');
+    } catch (e) { setErro(mensagemErro(e)); }
+    finally { setOcupado(false); }
+  }
+
+  function iniciarEdicaoCampo(campo: Campo) {
+    setCampoEditando(campo);
+    setNomeCampoEditando(campo.nome);
+    setTipoCampoEditando(campo.tipo);
+    setClassificacaoCampoEditando(campo.classificacao);
+    setVigenciaCampoEditando(`${campo.anoCriacao}-${String(campo.mesCriacao).padStart(2, '0')}`);
+    const [anoAtual, mesAtualNumero] = mesAtual().split('-').map(Number);
+    const regra = dados.regrasDesconto.filter(item => item.campoOrigemId === campo.id &&
+      item.anoInicio * 12 + item.mesInicio <= anoAtual * 12 + mesAtualNumero)
+      .sort((a, b) => a.anoInicio * 12 + a.mesInicio - (b.anoInicio * 12 + b.mesInicio) ||
+        a.criadoEm.localeCompare(b.criadoEm)).at(-1);
+    setGeraDesconto(regra?.ativo ?? false);
+    setNomeColunaDesconto(regra?.nomeColuna ?? '');
+    setPercentualPadraoDesconto(String(regra?.percentualPadrao ?? 0));
+    setVigenciaDesconto(mesAtual());
+    setErro(''); setAviso('');
+  }
+
+  async function salvarEdicaoCampo(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    if (!campoEditando || ocupado) return;
+    const [ano, mes] = vigenciaCampoEditando.split('-').map(Number);
+    if (!ano || ano < 2000 || ano > 2200 || !mes || mes > 12) {
+      setErro('Escolha uma competência válida para a vigência.'); return;
+    }
+    const percentualDesconto = Number(percentualPadraoDesconto.replace(',', '.'));
+    if (aba === 'BENEFICIO' && tipoCampoEditando === 'moeda' && geraDesconto &&
+      (!nomeColunaDesconto.trim() || !Number.isFinite(percentualDesconto) ||
+        percentualDesconto < 0 || percentualDesconto > 100)) {
+      setErro('Informe o nome da coluna e um percentual entre 0 e 100.'); return;
+    }
+    setOcupado(true); setErro(''); setAviso('');
+    try {
+      await enviar('/api/configuracao/campos/' + encodeURIComponent(campoEditando.id) + '/editar', {
+        nome: nomeCampoEditando.trim(), tipo: tipoCampoEditando,
+        classificacao: classificacaoCampoEditando, ano, mes,
+      });
+      const competenciaDesconto = Number(vigenciaDesconto.slice(0, 4)) * 12 +
+        Number(vigenciaDesconto.slice(5, 7));
+      const regraVigente = dados.regrasDesconto.filter(item => item.campoOrigemId === campoEditando.id &&
+        item.anoInicio * 12 + item.mesInicio <= competenciaDesconto)
+        .sort((a, b) => a.anoInicio * 12 + a.mesInicio - (b.anoInicio * 12 + b.mesInicio) ||
+          a.criadoEm.localeCompare(b.criadoEm)).at(-1);
+      const existeRegra = regraVigente?.ativo ?? false;
+      if ((aba === 'BENEFICIO' && tipoCampoEditando === 'moeda' && geraDesconto) || existeRegra) {
+        await enviar('/api/configuracao/campos/' + encodeURIComponent(campoEditando.id) +
+          '/desconto-beneficio', {
+          nomeColuna: nomeColunaDesconto.trim() || `Desconto ${nomeCampoEditando.trim()}`,
+          percentualPadrao: Number.isFinite(percentualDesconto) ? percentualDesconto : 0,
+          competencia: vigenciaDesconto,
+          ativo: geraDesconto && tipoCampoEditando === 'moeda',
+        });
+      }
+      setCampoEditando(null);
+      await carregar();
+      if (basesAbertas && grupoSelecionado?.origem === 'BENEFICIO')
+        await carregarBasesBeneficio(grupoSelecionado.id, vigenciaBases);
+      setAviso('Campo atualizado.');
+    } catch (e) { setErro(mensagemErro(e)); }
+    finally { setOcupado(false); }
+  }
+
+  async function removerVinculo(funcionario: Funcionario) {
+    if (!grupoSelecionado || ocupado) return;
+    if (!window.confirm(`Remover ${funcionario.nome} deste cadastro? Os registros históricos serão preservados.`)) return;
+    setOcupado(true); setErro(''); setAviso('');
+    try {
+      await enviar('/api/configuracao/grupos/' + encodeURIComponent(grupoSelecionado.id) +
+        '/funcionarios/' + encodeURIComponent(funcionario.id) + '/remover', {});
+      await carregar();
+      if (basesAbertas) await carregarBasesBeneficio(grupoSelecionado.id, vigenciaBases);
+      setAviso('Funcionário removido do cadastro; os registros históricos foram preservados.');
+    } catch (e) { setErro(mensagemErro(e)); }
+    finally { setOcupado(false); }
+  }
+
   const grupos = dados.grupos.filter(item => item.origem === aba);
+  const gruposVisiveis = grupos.filter(item => item.ativo || mostrarExcluidos);
   const grupoSelecionado = grupos.find(item => item.id === grupoId);
   const campos = dados.campos.filter(item => item.grupoId === grupoId);
   const rotulo = informacoes[aba];
@@ -487,16 +698,25 @@ export default function ConfigCampos() {
         ) : (
           <>
             <div className="config-selecao">
-              <h4>Cadastros de {rotulo.titulo.toLowerCase()}</h4>
-              <p>Selecione um item para consultar os vínculos e gerenciar os campos.</p>
+              <div className="config-selecao-cabecalho">
+                <div><h4>Cadastros de {rotulo.titulo.toLowerCase()}</h4>
+                  <p>Selecione um item para consultar os vínculos e gerenciar os campos.</p></div>
+                {grupos.some(item => !item.ativo) && <label className="config-mostrar-excluidos">
+                  <input type="checkbox" checked={mostrarExcluidos}
+                    onChange={evento => setMostrarExcluidos(evento.target.checked)} />
+                  Mostrar excluídos
+                </label>}
+              </div>
               <div className="config-lista-grupos">
-                {grupos.map(item => (
-                  <button key={item.id} type="button"
-                    className={'config-grupo' + (grupoId === item.id ? ' ativo' : '')}
-                    disabled={ocupado || carregandoBases}
-                    aria-expanded={grupoId === item.id}
-                    aria-controls="config-detalhes"
-                    onClick={() => {
+                {gruposVisiveis.map(item => (
+                  <article key={item.id} className={'config-grupo-cartao' +
+                    (grupoId === item.id ? ' selecionado' : '') + (!item.ativo ? ' arquivado' : '')}>
+                    <button type="button"
+                      className={'config-grupo' + (grupoId === item.id ? ' ativo' : '')}
+                      disabled={ocupado || carregandoBases}
+                      aria-expanded={grupoId === item.id}
+                      aria-controls="config-detalhes"
+                      onClick={() => {
                       setGrupoId(atual => atual === item.id ? '' : item.id);
                       setBasesAbertas(false);
                       setBases(null);
@@ -514,12 +734,32 @@ export default function ConfigCampos() {
                       setErro('');
                       setAviso('');
                     }}>
-                    <span>{item.nome}</span>
-                    {item.origem === 'COMISSAO' && <small>{item.responsavel}</small>}
-                    <small>{dados.campos.filter(c => c.grupoId === item.id).length} campos</small>
-                    <small>{(dados.funcionariosPorGrupo[item.id] ?? []).length} funcionários</small>
-                  </button>
+                      <span>{item.nome}</span>
+                      {item.origem === 'COMISSAO' && <small>{item.responsavel}</small>}
+                      <small>{dados.campos.filter(c => c.grupoId === item.id).length} campos</small>
+                      <small>{(dados.funcionariosPorGrupo[item.id] ?? []).length} funcionários</small>
+                      {!item.ativo && <small>Excluído</small>}
+                    </button>
+                    <div className="config-grupo-acoes">
+                      <button type="button" className="acao-cadastro-icone"
+                        aria-label={'Editar todos os dados de ' + item.nome}
+                        title={'Editar cadastro completo'}
+                        disabled={ocupado} onClick={() => iniciarEdicaoGrupo(item)}>
+                        <PencilSquareIcon aria-hidden="true" />
+                      </button>
+                      <button type="button" className="acao-cadastro-icone"
+                        aria-label={(item.ativo ? 'Excluir ' : 'Restaurar ') + item.nome}
+                        title={item.ativo ? 'Excluir cadastro' : 'Restaurar cadastro'}
+                        disabled={ocupado}
+                        onClick={() => void alterarStatusGrupo(item)}>
+                        {item.ativo ? <TrashIcon aria-hidden="true" /> : <ArrowPathIcon aria-hidden="true" />}
+                      </button>
+                    </div>
+                  </article>
                 ))}
+                {gruposVisiveis.length === 0 && <p className="config-sem-vinculos">
+                  Todos os cadastros estão excluídos. Marque “Mostrar excluídos” para restaurar um deles.
+                </p>}
               </div>
             </div>
 
@@ -531,7 +771,7 @@ export default function ConfigCampos() {
                     <h4>{grupoSelecionado.nome}</h4>
                     <p>Campos e funcionários vinculados ao cadastro.</p>
                   </div>
-                  <button type="button" className="acao-principal" disabled={ocupado}
+                  <button type="button" className="acao-principal" disabled={ocupado || !grupoSelecionado.ativo}
                     aria-expanded={campoAberto} aria-controls="form-campo-extra"
                     onClick={() => {
                       setCampoAberto(aberto => !aberto);
@@ -544,7 +784,11 @@ export default function ConfigCampos() {
                   </button>
                 </div>
 
-                {campoAberto && (
+                {!grupoSelecionado.ativo && <p className="config-aviso-arquivado" role="status">
+                  Cadastro excluído dos ativos. O histórico continua disponível; restaure-o pelo card para voltar a editar ou lançar valores.
+                </p>}
+
+                {campoAberto && grupoSelecionado.ativo && (
                   <form id="form-campo-extra" className="config-formulario config-form-campo"
                     onSubmit={evento => void criarCampo(evento)}>
                     <h4>Adicionar campo em {grupoSelecionado.nome}</h4>
@@ -596,7 +840,7 @@ export default function ConfigCampos() {
                         Funcionários vinculados <strong>{vinculados.length}</strong>
                         <span>{listaVinculadosAberta ? 'Ocultar' : 'Mostrar'}</span>
                       </button>
-                      <button type="button" className="botao-secundario" disabled={ocupado}
+                      <button type="button" className="botao-secundario" disabled={ocupado || !grupoSelecionado.ativo}
                         aria-expanded={vinculosAbertos} aria-controls="adicionar-funcionarios-grupo"
                         onClick={() => {
                           setVinculosAbertos(atual => !atual);
@@ -620,14 +864,21 @@ export default function ConfigCampos() {
                     ) : (
                       <>
                         {vinculadosFiltrados.length ? (
-                          <ul>{vinculadosFiltrados.map(item => (
-                            <li key={item.id}>{item.nome}{!item.ativo ? ' (inativo)' : ''}</li>
+                          <ul className="config-lista-funcionarios-vinculados">{vinculadosFiltrados.map(item => (
+                            <li key={item.id}><span>{item.nome}{!item.ativo ? ' (inativo)' : ''}</span>
+                              {grupoSelecionado.ativo && <button type="button" className="acao-cadastro-icone"
+                                aria-label={'Remover ' + item.nome + ' deste cadastro'}
+                                title={'Remover ' + item.nome + ' deste cadastro'} disabled={ocupado}
+                                onClick={() => void removerVinculo(item)}>
+                                <UserMinusIcon aria-hidden="true" />
+                              </button>}
+                            </li>
                           ))}</ul>
                         ) : <p className="config-sem-vinculos">Nenhum funcionário encontrado.</p>}
                       </>
                     )}
                   </div>}
-                  {vinculosAbertos && (
+                  {vinculosAbertos && grupoSelecionado.ativo && (
                     <div id="adicionar-funcionarios-grupo" className="config-aviso-vinculos">
                       <label htmlFor="busca-funcionarios-beneficio">Buscar funcionário
                         <input id="busca-funcionarios-beneficio" value={buscaVinculos}
@@ -682,7 +933,7 @@ export default function ConfigCampos() {
                           onChange={evento => setBuscaBases(evento.target.value)}
                           placeholder="Digite o nome" autoComplete="off" />
                       </label>}
-                      <button type="button" className="botao-secundario" disabled={ocupado}
+                      <button type="button" className="botao-secundario" disabled={ocupado || !grupoSelecionado.ativo}
                         aria-expanded={basesAbertas}
                         onClick={() => {
                           const abrir = !basesAbertas;
@@ -695,9 +946,9 @@ export default function ConfigCampos() {
                     {basesAbertas && (
                       <div className="config-editor-bases">
                         <label htmlFor="config-vigencia-bases">Válidos a partir da competência
-                          <input id="config-vigencia-bases" type="month" required
+                      <input id="config-vigencia-bases" type="month" required
                             value={vigenciaBases}
-                            disabled={ocupado || carregandoBases}
+                            disabled={ocupado || carregandoBases || !grupoSelecionado.ativo}
                             onChange={evento => {
                               const valor = evento.target.value;
                               setVigenciaBases(valor);
@@ -712,15 +963,15 @@ export default function ConfigCampos() {
                         {bases && <div className="edicao-massa" aria-label="Repetir valor em funcionarios selecionados">
                           <div className="edicao-massa-topo">
                             <strong>{funcionariosSelecionadosBase.length} funcionario(s) selecionado(s)</strong>
-                            <button type="button" className="botao-secundario" disabled={ocupado || carregandoBases}
+                            <button type="button" className="botao-secundario" disabled={ocupado || carregandoBases || !grupoSelecionado.ativo}
                               onClick={() => setFuncionariosSelecionadosBase(bases.funcionarios.map(f => f.id))}>
                               Selecionar todos
                             </button>
-                            <button type="button" className="botao-secundario" disabled={ocupado || carregandoBases}
+                            <button type="button" className="botao-secundario" disabled={ocupado || carregandoBases || !grupoSelecionado.ativo}
                               onClick={() => setFuncionariosSelecionadosBase([])}>Limpar selecao</button>
                           </div>
                           <label>Campo
-                            <select value={campoBaseEmMassa} disabled={ocupado || carregandoBases}
+                            <select value={campoBaseEmMassa} disabled={ocupado || carregandoBases || !grupoSelecionado.ativo}
                               onChange={evento => { setCampoBaseEmMassa(evento.target.value); setValorBaseEmMassa(''); }}>
                               <option value="">Selecione um campo</option>
                               {bases.campos.map(campo => <option key={campo.id} value={campo.id}>{campo.nome}</option>)}
@@ -755,7 +1006,7 @@ export default function ConfigCampos() {
                               onClick={preencherBasesSelecionadas}>Preencher selecionados</button>
                             {bases.campos.length > 0 && bases.funcionarios.length > 0 && (
                               <button type="button" className="acao-principal"
-                                disabled={ocupado || carregandoBases}
+                                disabled={ocupado || carregandoBases || !grupoSelecionado.ativo}
                                 onClick={() => void salvarBasesBeneficio()}>
                                 {ocupado ? 'Salvando...' : 'Salvar valores recorrentes'}
                               </button>
@@ -777,6 +1028,9 @@ export default function ConfigCampos() {
                                 <thead><tr><th scope="col">Selecionar</th><th scope="col">Funcionário</th>
                                   {bases.campos.map(campo => <th scope="col" key={campo.id}>
                                     {campo.nome}<span>{campo.tipo}</span>
+                                  </th>)}
+                                  {bases.descontos.map(desconto => <th scope="col" key={desconto.campoDescontoId}>
+                                    {desconto.nomeColuna}<span>Percentual recorrente</span>
                                   </th>)}
                                 </tr></thead>
                                 <tbody>{bases.funcionarios.filter(funcionario =>
@@ -825,11 +1079,33 @@ export default function ConfigCampos() {
                                         </span>
                                       </td>;
                                     })}
+                                    {bases.descontos.map(desconto => {
+                                      const chave = chaveBase(funcionario.id, desconto.campoOrigemId);
+                                      return <td key={desconto.campoDescontoId}>
+                                        <span className="editor-valor-mascarado config-percentual-desconto">
+                                          <input className="editor-valor-base" type="text" inputMode="decimal"
+                                            aria-label={`${desconto.nomeColuna} em percentual para ${funcionario.nome}`}
+                                            value={valoresPercentuaisDesconto[chave] ?? ''}
+                                            disabled={ocupado || carregandoBases || vigenciaBases < mesAtual()}
+                                            onChange={evento => setValoresPercentuaisDesconto(atual => ({
+                                              ...atual, [chave]: atualizarMascaraComCursor(
+                                                evento.currentTarget, 'percentual'),
+                                            }))}
+                                            onFocus={evento => {
+                                              const valor = prepararMascaraParaEdicao(evento.currentTarget);
+                                              setValoresPercentuaisDesconto(atual => ({ ...atual, [chave]: valor }));
+                                            }}
+                                            onBlur={() => setValoresPercentuaisDesconto(atual => ({ ...atual,
+                                              [chave]: mascaraFinal(atual[chave] ?? '', 'percentual') }))} />
+                                          <span>%</span>
+                                        </span>
+                                      </td>;
+                                    })}
                                   </tr>
                                 ))}{!bases.funcionarios.some(funcionario =>
                                   funcionario.nome.toLocaleLowerCase('pt-BR')
                                     .includes(buscaBases.trim().toLocaleLowerCase('pt-BR'))) && (
-                                    <tr><td colSpan={bases.campos.length + 2} className="config-linha-vazia">
+                                    <tr><td colSpan={bases.campos.length + bases.descontos.length + 2} className="config-linha-vazia">
                                       Nenhum funcionário encontrado.
                                     </td></tr>
                                   )}</tbody>
@@ -849,21 +1125,35 @@ export default function ConfigCampos() {
                 <div className="rolagem-tabela">
                   <table className="tabela-principal">
                     <thead><tr><th scope="col">Campo</th><th scope="col">Tipo</th>
+                      <th scope="col">Classificação</th><th scope="col">Vigência</th>
                       <th scope="col">Ordem</th><th scope="col">Situação</th>
-                      <th scope="col">Ação</th></tr></thead>
+                      <th scope="col">Ações</th></tr></thead>
                     <tbody>
                       {campos.map(campo => (
                         <tr key={campo.id}>
-                          <td>{campo.nome}</td><td>{campo.tipo}</td><td>{campo.ordemGlobal}</td>
-                          <td>{campo.ativo ? 'Ativo' : 'Inativo'}</td>
-                          <td><button type="button" className="botao-secundario"
-                            disabled={ocupado} onClick={() => void alterarStatus(campo)}>
-                            {campo.ativo ? 'Desativar' : 'Ativar'}
-                          </button></td>
+                          <td>{campo.nome}</td><td>{campo.tipo}</td><td>{campo.classificacao}</td>
+                          <td>{String(campo.mesCriacao).padStart(2, '0')}/{campo.anoCriacao}</td>
+                          <td>{campo.ordemGlobal}</td><td>{campo.ativo ? 'Ativo' : 'Excluído'}</td>
+                          <td><div className="acoes-cadastro">
+                            <button type="button" className="acao-cadastro-icone"
+                              aria-label={'Editar campo ' + campo.nome} title={'Editar campo ' + campo.nome}
+                              disabled={ocupado || !grupoSelecionado.ativo}
+                              onClick={() => iniciarEdicaoCampo(campo)}>
+                              <PencilSquareIcon aria-hidden="true" />
+                            </button>
+                            <button type="button" className="acao-cadastro-icone"
+                              aria-label={(campo.ativo ? 'Excluir campo ' : 'Restaurar campo ') + campo.nome}
+                              title={campo.ativo ? 'Excluir campo' : 'Restaurar campo'}
+                              disabled={ocupado || !grupoSelecionado.ativo}
+                              onClick={() => void alterarStatus(campo)}>
+                              {campo.ativo ? <TrashIcon aria-hidden="true" /> :
+                                <ArrowPathIcon aria-hidden="true" />}
+                            </button>
+                          </div></td>
                         </tr>
                       ))}
                       {campos.length === 0 && (
-                        <tr><td colSpan={5} className="config-linha-vazia">
+                        <tr><td colSpan={7} className="config-linha-vazia">
                           Nenhum campo cadastrado.</td></tr>
                       )}
                     </tbody>
@@ -946,6 +1236,39 @@ export default function ConfigCampos() {
                       <input id="wizard-vigencia" type="month" required value={competencia}
                         onChange={e => setCompetencia(e.target.value)} />
                     </label>
+                    {aba === 'BENEFICIO' && tipo === 'moeda' && (
+                      <fieldset className="config-desconto-beneficio">
+                        <legend>Desconto automático</legend>
+                        <label className="config-desconto-alternador">
+                          <input type="checkbox" checked={geraDescontoCriacao}
+                            onChange={e => setGeraDescontoCriacao(e.target.checked)} />
+                          <span><strong>Gera desconto</strong>
+                            <small>Cria uma coluna calculada a partir do valor deste benefício.</small></span>
+                        </label>
+                        {geraDescontoCriacao && <div className="config-campos-form">
+                          <label htmlFor="wizard-desconto-nome">Nome da coluna de desconto
+                            <input id="wizard-desconto-nome" required maxLength={160}
+                              value={nomeColunaDescontoCriacao}
+                              onChange={e => setNomeColunaDescontoCriacao(e.target.value)}
+                              placeholder="Ex.: Desconto vale alimentação" />
+                          </label>
+                          <label htmlFor="wizard-desconto-percentual">Percentual padrão
+                            <span className="config-desconto-percentual">
+                              <input id="wizard-desconto-percentual" type="number" min="0" max="100"
+                                step="0.01" required value={percentualDescontoCriacao}
+                                onChange={e => setPercentualDescontoCriacao(e.target.value)} />
+                              <span>%</span>
+                            </span>
+                          </label>
+                          <label htmlFor="wizard-desconto-vigencia">Vigente a partir da competência
+                            <input id="wizard-desconto-vigencia" type="month" min={mesAtual()} required
+                              value={vigenciaDescontoCriacao}
+                              onChange={e => setVigenciaDescontoCriacao(e.target.value)} />
+                          </label>
+                          <p className="config-ajuda-bases">O percentual vale para os funcionários vinculados e pode ser ajustado individualmente depois.</p>
+                        </div>}
+                      </fieldset>
+                    )}
                   </div>
                 )}
 
@@ -996,6 +1319,198 @@ export default function ConfigCampos() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {grupoEditando && (
+        <div className="config-sobreposicao">
+          <form ref={dialogoEdicaoRef} className="config-modal config-modal-edicao config-modal-edicao-completa" role="dialog" aria-modal="true"
+            aria-labelledby="editar-grupo-titulo" onSubmit={evento => void salvarEdicaoGrupo(evento)}
+            onKeyDown={lidarComTeclado}>
+            <div className="config-modal-topo">
+              <div><h3 id="editar-grupo-titulo">Editar {grupoEditando.origem === 'BENEFICIO' ? 'benefício' : 'comissão'}</h3>
+                <p>Revise identificação, campos e funcionários vinculados.</p></div>
+              <button type="button" className="config-modal-fechar" disabled={ocupado}
+                aria-label="Fechar edição" onClick={() => setGrupoEditando(null)}>×</button>
+            </div>
+            <div className="config-modal-corpo">
+              <section className="config-edicao-secao">
+                <h4>Identificação</h4>
+                <div className="config-campos-form">
+                  <label htmlFor="editar-grupo-nome">Nome do cadastro
+                    <input id="editar-grupo-nome" autoFocus required maxLength={160}
+                      value={nomeGrupoEditando} onChange={evento => setNomeGrupoEditando(evento.target.value)} />
+                  </label>
+                  {grupoEditando.origem === 'COMISSAO' && <label htmlFor="editar-grupo-responsavel">Setor responsável
+                    <select id="editar-grupo-responsavel" value={responsavelGrupoEditando}
+                      onChange={evento => setResponsavelGrupoEditando(evento.target.value as Responsavel)}>
+                      <option value="ADM">ADM</option><option value="CENTRAL">Central</option>
+                    </select>
+                  </label>}
+                </div>
+              </section>
+              <section className="config-edicao-secao">
+                <div className="config-edicao-secao-topo"><div><h4>Campos</h4>
+                  <p>Tipo e classificação respeitam os valores já registrados.</p></div>
+                  <span>{camposGrupoEditando.length}</span></div>
+                <div className="config-edicao-campos-lista">
+                  {camposGrupoEditando.map((campo, indice) => (
+                    <fieldset className="config-edicao-campo" key={campo.id}>
+                      <legend>{campo.nome || `Campo ${indice + 1}`}</legend>
+                      <div className="config-campos-form">
+                        <label htmlFor={`editar-campo-nome-${campo.id}`}>Nome do campo
+                          <input id={`editar-campo-nome-${campo.id}`} required maxLength={160}
+                            value={campo.nome} onChange={evento => setCamposGrupoEditando(atual => atual.map(item =>
+                              item.id === campo.id ? { ...item, nome: evento.target.value } : item))} />
+                        </label>
+                        <label htmlFor={`editar-campo-tipo-${campo.id}`}>Tipo
+                          <select id={`editar-campo-tipo-${campo.id}`} value={campo.tipo}
+                            onChange={evento => setCamposGrupoEditando(atual => atual.map(item =>
+                              item.id === campo.id ? { ...item, tipo: evento.target.value } : item))}>
+                            <option value="moeda">Moeda (R$)</option><option value="percentual">Percentual (%)</option>
+                            <option value="data">Data</option><option value="horario">Horário</option>
+                          </select>
+                        </label>
+                        <label htmlFor={`editar-campo-classificacao-${campo.id}`}>Classificação
+                          <select id={`editar-campo-classificacao-${campo.id}`} value={campo.classificacao}
+                            onChange={evento => setCamposGrupoEditando(atual => atual.map(item =>
+                              item.id === campo.id ? { ...item, classificacao: evento.target.value } : item))}>
+                            <option value="provento">Provento</option><option value="desconto">Desconto</option>
+                            <option value="informativo">Informativo</option>
+                          </select>
+                        </label>
+                        <label htmlFor={`editar-campo-vigencia-${campo.id}`}>A partir da competência
+                          <input id={`editar-campo-vigencia-${campo.id}`} type="month" required
+                            value={campo.vigencia} onChange={evento => setCamposGrupoEditando(atual => atual.map(item =>
+                              item.id === campo.id ? { ...item, vigencia: evento.target.value } : item))} />
+                        </label>
+                        <label className="config-edicao-campo-ativo">
+                          <input type="checkbox" checked={campo.ativo}
+                            onChange={evento => setCamposGrupoEditando(atual => atual.map(item =>
+                              item.id === campo.id ? { ...item, ativo: evento.target.checked } : item))} />
+                          Campo ativo para novas competências
+                        </label>
+                      </div>
+                    </fieldset>
+                  ))}
+                  {camposGrupoEditando.length === 0 && <p className="config-sem-vinculos">
+                    Este cadastro ainda não tem campos.</p>}
+                </div>
+              </section>
+              <section className="config-edicao-secao">
+                <div className="config-edicao-secao-topo"><div><h4>Funcionários vinculados</h4>
+                  <p>Marque quem deve permanecer associado a este cadastro.</p></div>
+                  <span>{funcionariosGrupoEditando.length} selecionado(s)</span></div>
+                <label className="config-busca-edicao-funcionario" htmlFor="editar-grupo-busca-funcionario">
+                  Buscar funcionário
+                  <input id="editar-grupo-busca-funcionario" type="search"
+                    value={buscaFuncionariosGrupoEditando}
+                    onChange={evento => setBuscaFuncionariosGrupoEditando(evento.target.value)}
+                    placeholder="Digite o nome" />
+                </label>
+                <div className="config-checklist config-checklist-edicao">
+                  {funcionarios.filter(funcionario => funcionario.nome.toLocaleLowerCase('pt-BR')
+                    .includes(buscaFuncionariosGrupoEditando.trim().toLocaleLowerCase('pt-BR'))).map(funcionario => (
+                    <label key={funcionario.id} className="config-item-funcionario">
+                      <input type="checkbox" checked={funcionariosGrupoEditando.includes(funcionario.id)}
+                        onChange={evento => setFuncionariosGrupoEditando(atual => evento.target.checked
+                          ? [...new Set([...atual, funcionario.id])]
+                          : atual.filter(id => id !== funcionario.id))} />
+                      <span>{funcionario.nome}{funcionario.ativo ? '' : ' (inativo)'}</span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+              {erro && <p className="erro" role="alert">{erro}</p>}
+            </div>
+            <div className="config-modal-acoes">
+              <button type="button" className="botao-secundario" disabled={ocupado}
+                onClick={() => setGrupoEditando(null)}>Cancelar</button>
+              <button type="submit" className="acao-principal" disabled={ocupado || !nomeGrupoEditando.trim()}>
+                {ocupado ? 'Salvando...' : 'Salvar alterações'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {campoEditando && (
+        <div className="config-sobreposicao">
+          <form ref={dialogoEdicaoRef} className="config-modal config-modal-edicao" role="dialog" aria-modal="true"
+            aria-labelledby="editar-campo-titulo" onSubmit={evento => void salvarEdicaoCampo(evento)}
+            onKeyDown={lidarComTeclado}>
+            <div className="config-modal-topo">
+              <div><h3 id="editar-campo-titulo">Editar campo</h3>
+                <p>Altere nome, tipo, classificação ou vigência quando o histórico permitir.</p></div>
+              <button type="button" className="config-modal-fechar" disabled={ocupado}
+                aria-label="Fechar edição" onClick={() => setCampoEditando(null)}>×</button>
+            </div>
+            <div className="config-modal-corpo">
+              <div className="config-campos-form">
+                <label htmlFor="editar-campo-nome">Nome do campo
+                  <input id="editar-campo-nome" autoFocus required maxLength={160}
+                    value={nomeCampoEditando} onChange={evento => setNomeCampoEditando(evento.target.value)} />
+                </label>
+                <label htmlFor="editar-campo-tipo">Tipo
+                  <select id="editar-campo-tipo" value={tipoCampoEditando}
+                    onChange={evento => setTipoCampoEditando(evento.target.value)}>
+                    <option value="moeda">Moeda (R$)</option><option value="percentual">Percentual (%)</option>
+                    <option value="data">Data</option><option value="horario">Horário</option>
+                  </select>
+                </label>
+                <label htmlFor="editar-campo-classificacao">Classificação
+                  <select id="editar-campo-classificacao" value={classificacaoCampoEditando}
+                    onChange={evento => setClassificacaoCampoEditando(evento.target.value)}>
+                    <option value="provento">Provento</option><option value="desconto">Desconto</option>
+                    <option value="informativo">Informativo</option>
+                  </select>
+                </label>
+                <label htmlFor="editar-campo-vigencia">Vigência
+                  <input id="editar-campo-vigencia" type="month" required value={vigenciaCampoEditando}
+                    onChange={evento => setVigenciaCampoEditando(evento.target.value)} />
+                </label>
+              </div>
+              {aba === 'BENEFICIO' && tipoCampoEditando === 'moeda' && (
+                <fieldset className="config-desconto-beneficio">
+                  <legend>Desconto automático</legend>
+                  <label className="config-desconto-alternador">
+                    <input type="checkbox" checked={geraDesconto}
+                      onChange={evento => setGeraDesconto(evento.target.checked)} />
+                    <span><strong>Gera desconto</strong>
+                      <small>Calcula uma coluna de desconto com base neste valor do benefício.</small></span>
+                  </label>
+                  {geraDesconto && <div className="config-campos-form">
+                    <label htmlFor="desconto-nome-coluna">Nome da coluna de desconto
+                      <input id="desconto-nome-coluna" required maxLength={160}
+                        value={nomeColunaDesconto} onChange={evento => setNomeColunaDesconto(evento.target.value)}
+                        placeholder="Ex.: Desconto vale alimentação" />
+                    </label>
+                    <label htmlFor="desconto-percentual-padrao">Percentual padrão
+                      <span className="config-desconto-percentual">
+                        <input id="desconto-percentual-padrao" type="number" min="0" max="100"
+                          step="0.01" required value={percentualPadraoDesconto}
+                          onChange={evento => setPercentualPadraoDesconto(evento.target.value)} />
+                        <span>%</span>
+                      </span>
+                    </label>
+                    <label htmlFor="desconto-vigencia">Vigente a partir da competência
+                      <input id="desconto-vigencia" type="month" min={mesAtual()} required value={vigenciaDesconto}
+                        onChange={evento => setVigenciaDesconto(evento.target.value)} />
+                    </label>
+                    <p className="config-ajuda-bases">O percentual padrão vale para todos. Percentuais individuais podem ser ajustados aqui ou na Consolidação e ficam recorrentes.</p>
+                  </div>}
+                </fieldset>
+              )}
+              {erro && <p className="erro" role="alert">{erro}</p>}
+            </div>
+            <div className="config-modal-acoes">
+              <button type="button" className="botao-secundario" disabled={ocupado}
+                onClick={() => setCampoEditando(null)}>Cancelar</button>
+              <button type="submit" className="acao-principal" disabled={ocupado || !nomeCampoEditando.trim()}>
+                {ocupado ? 'Salvando...' : 'Salvar alterações'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </section>

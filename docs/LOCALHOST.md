@@ -6,17 +6,11 @@ Node.js 24 e pnpm 10. Execute na raiz do monorepo:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm --filter @odontofolha/web dev
+pnpm dev
 ```
 
-Em outro terminal:
-
-```bash
-pnpm --filter @odontofolha/api dev
-```
-
-A interface responde em http://localhost:3000 e o health check em
-http://localhost:3001/api/health.
+O comando inicia a API e a interface. Acesse http://localhost:3000; o health
+check da API fica em http://localhost:3001/api/health.
 
 ## Variáveis privadas
 
@@ -34,15 +28,23 @@ WEB_ORIGIN=http://localhost:3000
 ```
 
 `DIRECT_URL` destina-se exclusivamente às migrações administrativas e não é
-necessária no processo HTTP da API. O carregamento e a validação **ainda não
-conectam o Neon nem implementam autenticação**. O health check continua
-disponível quando não há variáveis de integração definidas.
+necessária no processo HTTP da API. Para migrações, use os arquivos locais
+`.env.migration.development` e `.env.migration.production`, cada um com o
+`DIRECT_URL` direto da branch Neon correspondente, sem pooler. Esses arquivos
+são ignorados pelo Git.
 
-## Banco destinado à produção
+Na raiz do monorepo, os comandos abaixo aplicam migrations do Drizzle e Better
+Auth em apenas um ambiente por vez:
 
-O proprietário optou por usar um único projeto Neon inicialmente. Não rodar
-migrações, seeds ou testes destrutivos nesse banco sem autorização específica.
-Usar dados fictícios nos testes automatizados.
+```bash
+pnpm db:migrate:dev
+pnpm db:migrate:prod
+```
+
+Use um comando por vez. O comando de produção exige digitar `PRODUCAO` no
+terminal. Antes de executar, revise o SQL e confirme que o arquivo de conexão
+aponta para a branch pretendida no Neon. Rodar um comando não aplica migrations
+no outro banco.
 
 ## Git Bash com conflito de pnpm
 

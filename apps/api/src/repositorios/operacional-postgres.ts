@@ -253,12 +253,14 @@ export function criarRepositorioPostgres(
       id: t.competencias.id,
       ano: t.competencias.ano,
       mes: t.competencias.mes,
+      criadaEm: t.competencias.criadaEm,
       revisao: t.competencias.revisao,
       fechadaEm: t.competencias.fechadaEm,
       fechadaComPendencias: t.competencias.fechadaComPendencias,
     }).from(t.competencias)
       .orderBy(desc(t.competencias.ano), desc(t.competencias.mes));
     return registros.map(registro => ({ ...registro,
+      criadaEm: registro.criadaEm.toISOString(),
       fechadaEm: registro.fechadaEm?.toISOString() ?? null }));
   }
 

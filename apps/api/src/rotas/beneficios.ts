@@ -3,7 +3,8 @@ import { z } from '@odontofolha/contracts';
 import type { DependenciasOperacionais, SessaoOperacional } from './operacionais';
 import type { criarBeneficiosPostgres } from '../repositorios/beneficios-postgres';
 import {
-  atualizarBaseRecorrente, definirExcecaoMensal, preverReajuste, confirmarReajuste,
+  atualizarBaseRecorrente, atualizarPercentualDescontoRecorrente,
+  definirExcecaoMensal, preverReajuste, confirmarReajuste,
 } from '../dominio/beneficios';
 
 type Beneficios = ReturnType<typeof criarBeneficiosPostgres>;
@@ -17,6 +18,11 @@ const valorMassaSchema = z.object({
   funcionariosIds: z.array(uuid).min(1).max(10000), campoId: uuid,
   valor: z.union([z.number().finite(), z.string().min(1)]),
   acao: z.enum(['base', 'excecao']), versaoEsperada: z.number().int().nonnegative(),
+}).strict();
+const percentualDescontoSchema = z.object({
+  funcionarioId: uuid, campoOrigemId: uuid,
+  percentual: z.number().finite().min(0).max(100),
+  versaoEsperada: z.number().int().nonnegative(),
 }).strict();
 const previaSchema = z.object({
   campoId: uuid,
@@ -100,6 +106,26 @@ export function criarRotasBeneficios(
       const ok = await deps.beneficios.persistir(
         anterior, novo, competenciaId, c.get('sessao').usuarioId);
       return ok ? c.json({ versao: novo.versao, recorrente: false })
+        : c.json({ erro: 'Competência fechada ou catálogo alterado; atualize e tente novamente.' }, 409);
+    } catch (e) {
+      const m = motivo(e); return c.json({ erro: m.texto }, m.status);
+    }
+  });
+  app.post('/beneficios/:competenciaId/percentual-desconto', async c => {
+    const parsed = percentualDescontoSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ erro: 'Percentual de desconto inválido' }, 400);
+    const competenciaId = c.req.param('competenciaId');
+    const estado = await deps.buscarCompetencia(competenciaId);
+    if (!estado) return c.json({ erro: 'Competência inexistente' }, 404);
+    try {
+      const anterior = await deps.beneficios.carregar();
+      const { funcionarioId, campoOrigemId, percentual, versaoEsperada } = parsed.data;
+      const novo = atualizarPercentualDescontoRecorrente(anterior, estado,
+        funcionarioId, campoOrigemId, percentual,
+        { id: c.get('sessao').usuarioId, perfil: c.get('sessao').perfil }, versaoEsperada);
+      const ok = await deps.beneficios.persistir(
+        anterior, novo, competenciaId, c.get('sessao').usuarioId);
+      return ok ? c.json({ versao: novo.versao, recorrente: true })
         : c.json({ erro: 'Competência fechada ou catálogo alterado; atualize e tente novamente.' }, 409);
     } catch (e) {
       const m = motivo(e); return c.json({ erro: m.texto }, m.status);

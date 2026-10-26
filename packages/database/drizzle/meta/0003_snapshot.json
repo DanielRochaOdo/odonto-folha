@@ -1,0 +1,2146 @@
+{
+  "id": "ed8dc9d3-9c02-474b-b134-a529ede64e2d",
+  "prevId": "062430fe-0670-4b70-ac25-8d4e90d71372",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.auditoria": {
+      "name": "auditoria",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "usuario_id": {
+          "name": "usuario_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "competencia_id": {
+          "name": "competencia_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entidade": {
+          "name": "entidade",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entidade_id": {
+          "name": "entidade_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "acao": {
+          "name": "acao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "detalhes": {
+          "name": "detalhes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "ocorrido_em": {
+          "name": "ocorrido_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auditoria_competencia_idx": {
+          "name": "auditoria_competencia_idx",
+          "columns": [
+            {
+              "expression": "competencia_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ocorrido_em",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "auditoria_competencia_id_competencias_id_fk": {
+          "name": "auditoria_competencia_id_competencias_id_fk",
+          "tableFrom": "auditoria",
+          "tableTo": "competencias",
+          "columnsFrom": [
+            "competencia_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.bases_beneficio": {
+      "name": "bases_beneficio",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "vinculo_id": {
+          "name": "vinculo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "campo_id": {
+          "name": "campo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ano_inicio": {
+          "name": "ano_inicio",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mes_inicio": {
+          "name": "mes_inicio",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valor_numerico": {
+          "name": "valor_numerico",
+          "type": "numeric(18, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valor_textual": {
+          "name": "valor_textual",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "autor_id": {
+          "name": "autor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "bases_beneficio_vigencia_idx": {
+          "name": "bases_beneficio_vigencia_idx",
+          "columns": [
+            {
+              "expression": "vinculo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "campo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ano_inicio",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "mes_inicio",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bases_beneficio_vinculo_id_vinculos_empregaticios_id_fk": {
+          "name": "bases_beneficio_vinculo_id_vinculos_empregaticios_id_fk",
+          "tableFrom": "bases_beneficio",
+          "tableTo": "vinculos_empregaticios",
+          "columnsFrom": [
+            "vinculo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "bases_beneficio_campo_id_campos_dinamicos_id_fk": {
+          "name": "bases_beneficio_campo_id_campos_dinamicos_id_fk",
+          "tableFrom": "bases_beneficio",
+          "tableTo": "campos_dinamicos",
+          "columnsFrom": [
+            "campo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.campos_competencia": {
+      "name": "campos_competencia",
+      "schema": "",
+      "columns": {
+        "competencia_id": {
+          "name": "competencia_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "campo_id": {
+          "name": "campo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "visivel_historico": {
+          "name": "visivel_historico",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "edicao_bloqueada": {
+          "name": "edicao_bloqueada",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "campos_competencia_competencia_id_competencias_id_fk": {
+          "name": "campos_competencia_competencia_id_competencias_id_fk",
+          "tableFrom": "campos_competencia",
+          "tableTo": "competencias",
+          "columnsFrom": [
+            "competencia_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "campos_competencia_campo_id_campos_dinamicos_id_fk": {
+          "name": "campos_competencia_campo_id_campos_dinamicos_id_fk",
+          "tableFrom": "campos_competencia",
+          "tableTo": "campos_dinamicos",
+          "columnsFrom": [
+            "campo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "campos_competencia_competencia_id_campo_id_pk": {
+          "name": "campos_competencia_competencia_id_campo_id_pk",
+          "columns": [
+            "competencia_id",
+            "campo_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.campos_dinamicos": {
+      "name": "campos_dinamicos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "grupo_id": {
+          "name": "grupo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "classificacao": {
+          "name": "classificacao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ordem_global": {
+          "name": "ordem_global",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "campos_dinamicos_ordem_global_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "ano_criacao": {
+          "name": "ano_criacao",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mes_criacao": {
+          "name": "mes_criacao",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ativo": {
+          "name": "ativo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "campos_dinamicos_grupo_id_grupos_dinamicos_id_fk": {
+          "name": "campos_dinamicos_grupo_id_grupos_dinamicos_id_fk",
+          "tableFrom": "campos_dinamicos",
+          "tableTo": "grupos_dinamicos",
+          "columnsFrom": [
+            "grupo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "campos_dinamicos_ordem_global_unique": {
+          "name": "campos_dinamicos_ordem_global_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "ordem_global"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.celulas_competencia": {
+      "name": "celulas_competencia",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "competencia_id": {
+          "name": "competencia_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vinculo_id": {
+          "name": "vinculo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "campo_id": {
+          "name": "campo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "modo": {
+          "name": "modo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "versao": {
+          "name": "versao",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "celulas_uma_por_funcionario": {
+          "name": "celulas_uma_por_funcionario",
+          "columns": [
+            {
+              "expression": "competencia_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "vinculo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "campo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "celulas_competencia_competencia_id_competencias_id_fk": {
+          "name": "celulas_competencia_competencia_id_competencias_id_fk",
+          "tableFrom": "celulas_competencia",
+          "tableTo": "competencias",
+          "columnsFrom": [
+            "competencia_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "celulas_competencia_vinculo_id_vinculos_empregaticios_id_fk": {
+          "name": "celulas_competencia_vinculo_id_vinculos_empregaticios_id_fk",
+          "tableFrom": "celulas_competencia",
+          "tableTo": "vinculos_empregaticios",
+          "columnsFrom": [
+            "vinculo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "celulas_competencia_campo_id_campos_dinamicos_id_fk": {
+          "name": "celulas_competencia_campo_id_campos_dinamicos_id_fk",
+          "tableFrom": "celulas_competencia",
+          "tableTo": "campos_dinamicos",
+          "columnsFrom": [
+            "campo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.competencias": {
+      "name": "competencias",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "ano": {
+          "name": "ano",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mes": {
+          "name": "mes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revisao": {
+          "name": "revisao",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "criada_em": {
+          "name": "criada_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "criada_por": {
+          "name": "criada_por",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fechada_em": {
+          "name": "fechada_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fechada_por": {
+          "name": "fechada_por",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fechada_com_pendencias": {
+          "name": "fechada_com_pendencias",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {
+        "competencias_ano_mes": {
+          "name": "competencias_ano_mes",
+          "columns": [
+            {
+              "expression": "ano",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "mes",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "competencias_mes_valido": {
+          "name": "competencias_mes_valido",
+          "value": "mes BETWEEN 1 AND 12"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.empresas": {
+      "name": "empresas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ativa": {
+          "name": "ativa",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "criada_em": {
+          "name": "criada_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "empresas_nome_unique": {
+          "name": "empresas_nome_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "nome"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.envios_comissoes": {
+      "name": "envios_comissoes",
+      "schema": "",
+      "columns": {
+        "competencia_id": {
+          "name": "competencia_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grupo_id": {
+          "name": "grupo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "responsavel": {
+          "name": "responsavel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "concluido": {
+          "name": "concluido",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "concluido_em": {
+          "name": "concluido_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "concluido_por": {
+          "name": "concluido_por",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "envios_comissoes_competencia_id_competencias_id_fk": {
+          "name": "envios_comissoes_competencia_id_competencias_id_fk",
+          "tableFrom": "envios_comissoes",
+          "tableTo": "competencias",
+          "columnsFrom": [
+            "competencia_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "envios_comissoes_grupo_id_grupos_dinamicos_id_fk": {
+          "name": "envios_comissoes_grupo_id_grupos_dinamicos_id_fk",
+          "tableFrom": "envios_comissoes",
+          "tableTo": "grupos_dinamicos",
+          "columnsFrom": [
+            "grupo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "envios_comissoes_competencia_id_grupo_id_pk": {
+          "name": "envios_comissoes_competencia_id_grupo_id_pk",
+          "columns": [
+            "competencia_id",
+            "grupo_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.excecoes_beneficio": {
+      "name": "excecoes_beneficio",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "competencia_id": {
+          "name": "competencia_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vinculo_id": {
+          "name": "vinculo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "campo_id": {
+          "name": "campo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valor_numerico": {
+          "name": "valor_numerico",
+          "type": "numeric(18, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valor_textual": {
+          "name": "valor_textual",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "autor_id": {
+          "name": "autor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "excecoes_beneficio_competencia_idx": {
+          "name": "excecoes_beneficio_competencia_idx",
+          "columns": [
+            {
+              "expression": "competencia_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "vinculo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "campo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "excecoes_beneficio_competencia_id_competencias_id_fk": {
+          "name": "excecoes_beneficio_competencia_id_competencias_id_fk",
+          "tableFrom": "excecoes_beneficio",
+          "tableTo": "competencias",
+          "columnsFrom": [
+            "competencia_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "excecoes_beneficio_vinculo_id_vinculos_empregaticios_id_fk": {
+          "name": "excecoes_beneficio_vinculo_id_vinculos_empregaticios_id_fk",
+          "tableFrom": "excecoes_beneficio",
+          "tableTo": "vinculos_empregaticios",
+          "columnsFrom": [
+            "vinculo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "excecoes_beneficio_campo_id_campos_dinamicos_id_fk": {
+          "name": "excecoes_beneficio_campo_id_campos_dinamicos_id_fk",
+          "tableFrom": "excecoes_beneficio",
+          "tableTo": "campos_dinamicos",
+          "columnsFrom": [
+            "campo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.funcionarios_competencia": {
+      "name": "funcionarios_competencia",
+      "schema": "",
+      "columns": {
+        "competencia_id": {
+          "name": "competencia_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vinculo_id": {
+          "name": "vinculo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "empresa_contratante_id": {
+          "name": "empresa_contratante_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "empresa_lotado_id": {
+          "name": "empresa_lotado_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "setor_lotacao_id": {
+          "name": "setor_lotacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cpf": {
+          "name": "cpf",
+          "type": "varchar(11)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cargo": {
+          "name": "cargo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "admissao": {
+          "name": "admissao",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "salario_contratual": {
+          "name": "salario_contratual",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "funcionarios_competencia_competencia_id_competencias_id_fk": {
+          "name": "funcionarios_competencia_competencia_id_competencias_id_fk",
+          "tableFrom": "funcionarios_competencia",
+          "tableTo": "competencias",
+          "columnsFrom": [
+            "competencia_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "funcionarios_competencia_vinculo_id_vinculos_empregaticios_id_fk": {
+          "name": "funcionarios_competencia_vinculo_id_vinculos_empregaticios_id_fk",
+          "tableFrom": "funcionarios_competencia",
+          "tableTo": "vinculos_empregaticios",
+          "columnsFrom": [
+            "vinculo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "funcionarios_competencia_empresa_contratante_id_empresas_id_fk": {
+          "name": "funcionarios_competencia_empresa_contratante_id_empresas_id_fk",
+          "tableFrom": "funcionarios_competencia",
+          "tableTo": "empresas",
+          "columnsFrom": [
+            "empresa_contratante_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "funcionarios_competencia_empresa_lotado_id_empresas_id_fk": {
+          "name": "funcionarios_competencia_empresa_lotado_id_empresas_id_fk",
+          "tableFrom": "funcionarios_competencia",
+          "tableTo": "empresas",
+          "columnsFrom": [
+            "empresa_lotado_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "funcionarios_competencia_setor_lotacao_id_setores_id_fk": {
+          "name": "funcionarios_competencia_setor_lotacao_id_setores_id_fk",
+          "tableFrom": "funcionarios_competencia",
+          "tableTo": "setores",
+          "columnsFrom": [
+            "setor_lotacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "funcionarios_competencia_competencia_id_vinculo_id_pk": {
+          "name": "funcionarios_competencia_competencia_id_vinculo_id_pk",
+          "columns": [
+            "competencia_id",
+            "vinculo_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.grupos_dinamicos": {
+      "name": "grupos_dinamicos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "origem": {
+          "name": "origem",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "responsavel": {
+          "name": "responsavel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'NENHUM'"
+        },
+        "ativo": {
+          "name": "ativo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.lancamentos_competencia": {
+      "name": "lancamentos_competencia",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "celula_id": {
+          "name": "celula_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "modo": {
+          "name": "modo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valor_numerico": {
+          "name": "valor_numerico",
+          "type": "numeric(18, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valor_textual": {
+          "name": "valor_textual",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vigente": {
+          "name": "vigente",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "autor_id": {
+          "name": "autor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "lancamentos_celula_idx": {
+          "name": "lancamentos_celula_idx",
+          "columns": [
+            {
+              "expression": "celula_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "vigente",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lancamentos_competencia_celula_id_celulas_competencia_id_fk": {
+          "name": "lancamentos_competencia_celula_id_celulas_competencia_id_fk",
+          "tableFrom": "lancamentos_competencia",
+          "tableTo": "celulas_competencia",
+          "columnsFrom": [
+            "celula_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "lancamentos_um_valor": {
+          "name": "lancamentos_um_valor",
+          "value": "num_nonnulls(valor_numerico, valor_textual) = 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.movimentacoes_vinculo": {
+      "name": "movimentacoes_vinculo",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "vinculo_id": {
+          "name": "vinculo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ano_vigencia": {
+          "name": "ano_vigencia",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mes_vigencia": {
+          "name": "mes_vigencia",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "empresa_contratante_id": {
+          "name": "empresa_contratante_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "empresa_lotado_id": {
+          "name": "empresa_lotado_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "setor_lotacao_id": {
+          "name": "setor_lotacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cargo": {
+          "name": "cargo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "salario_contratual": {
+          "name": "salario_contratual",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "autor_id": {
+          "name": "autor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "movimentacoes_vigencia_idx": {
+          "name": "movimentacoes_vigencia_idx",
+          "columns": [
+            {
+              "expression": "vinculo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ano_vigencia",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "mes_vigencia",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "movimentacoes_vinculo_vinculo_id_vinculos_empregaticios_id_fk": {
+          "name": "movimentacoes_vinculo_vinculo_id_vinculos_empregaticios_id_fk",
+          "tableFrom": "movimentacoes_vinculo",
+          "tableTo": "vinculos_empregaticios",
+          "columnsFrom": [
+            "vinculo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "movimentacoes_vinculo_empresa_contratante_id_empresas_id_fk": {
+          "name": "movimentacoes_vinculo_empresa_contratante_id_empresas_id_fk",
+          "tableFrom": "movimentacoes_vinculo",
+          "tableTo": "empresas",
+          "columnsFrom": [
+            "empresa_contratante_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "movimentacoes_vinculo_empresa_lotado_id_empresas_id_fk": {
+          "name": "movimentacoes_vinculo_empresa_lotado_id_empresas_id_fk",
+          "tableFrom": "movimentacoes_vinculo",
+          "tableTo": "empresas",
+          "columnsFrom": [
+            "empresa_lotado_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "movimentacoes_vinculo_setor_lotacao_id_setores_id_fk": {
+          "name": "movimentacoes_vinculo_setor_lotacao_id_setores_id_fk",
+          "tableFrom": "movimentacoes_vinculo",
+          "tableTo": "setores",
+          "columnsFrom": [
+            "setor_lotacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.percentuais_desconto_beneficio": {
+      "name": "percentuais_desconto_beneficio",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "campo_origem_id": {
+          "name": "campo_origem_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vinculo_id": {
+          "name": "vinculo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "percentual": {
+          "name": "percentual",
+          "type": "numeric(9, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ano_inicio": {
+          "name": "ano_inicio",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mes_inicio": {
+          "name": "mes_inicio",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "autor_id": {
+          "name": "autor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "percentuais_desconto_beneficio_vigencia_idx": {
+          "name": "percentuais_desconto_beneficio_vigencia_idx",
+          "columns": [
+            {
+              "expression": "campo_origem_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "vinculo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ano_inicio",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "mes_inicio",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "percentuais_desconto_beneficio_campo_origem_id_campos_dinamicos_id_fk": {
+          "name": "percentuais_desconto_beneficio_campo_origem_id_campos_dinamicos_id_fk",
+          "tableFrom": "percentuais_desconto_beneficio",
+          "tableTo": "campos_dinamicos",
+          "columnsFrom": [
+            "campo_origem_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "percentuais_desconto_beneficio_vinculo_id_vinculos_empregaticios_id_fk": {
+          "name": "percentuais_desconto_beneficio_vinculo_id_vinculos_empregaticios_id_fk",
+          "tableFrom": "percentuais_desconto_beneficio",
+          "tableTo": "vinculos_empregaticios",
+          "columnsFrom": [
+            "vinculo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "percentuais_desconto_beneficio_percentual_valido": {
+          "name": "percentuais_desconto_beneficio_percentual_valido",
+          "value": "percentual BETWEEN 0 AND 100"
+        },
+        "percentuais_desconto_beneficio_mes_valido": {
+          "name": "percentuais_desconto_beneficio_mes_valido",
+          "value": "mes_inicio BETWEEN 1 AND 12"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pessoas": {
+      "name": "pessoas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cpf": {
+          "name": "cpf",
+          "type": "varchar(11)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criada_em": {
+          "name": "criada_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "pessoas_cpf_unique": {
+          "name": "pessoas_cpf_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "cpf"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "pessoas_cpf_formato": {
+          "name": "pessoas_cpf_formato",
+          "value": "cpf ~ '^[0-9]{11}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.regras_desconto_beneficio": {
+      "name": "regras_desconto_beneficio",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "campo_origem_id": {
+          "name": "campo_origem_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "campo_desconto_id": {
+          "name": "campo_desconto_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nome_coluna": {
+          "name": "nome_coluna",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "percentual_padrao": {
+          "name": "percentual_padrao",
+          "type": "numeric(9, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ano_inicio": {
+          "name": "ano_inicio",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mes_inicio": {
+          "name": "mes_inicio",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ativo": {
+          "name": "ativo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "autor_id": {
+          "name": "autor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "regras_desconto_beneficio_vigencia_idx": {
+          "name": "regras_desconto_beneficio_vigencia_idx",
+          "columns": [
+            {
+              "expression": "campo_origem_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ano_inicio",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "mes_inicio",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "regras_desconto_beneficio_campo_origem_id_campos_dinamicos_id_fk": {
+          "name": "regras_desconto_beneficio_campo_origem_id_campos_dinamicos_id_fk",
+          "tableFrom": "regras_desconto_beneficio",
+          "tableTo": "campos_dinamicos",
+          "columnsFrom": [
+            "campo_origem_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "regras_desconto_beneficio_percentual_valido": {
+          "name": "regras_desconto_beneficio_percentual_valido",
+          "value": "percentual_padrao BETWEEN 0 AND 100"
+        },
+        "regras_desconto_beneficio_mes_valido": {
+          "name": "regras_desconto_beneficio_mes_valido",
+          "value": "mes_inicio BETWEEN 1 AND 12"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.setores": {
+      "name": "setores",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ativo": {
+          "name": "ativo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "setores_nome_unique": {
+          "name": "setores_nome_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "nome"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.usuarios_empresas": {
+      "name": "usuarios_empresas",
+      "schema": "",
+      "columns": {
+        "usuario_id": {
+          "name": "usuario_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "empresa_id": {
+          "name": "empresa_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "usuarios_empresas_usuario_id_usuarios_perfis_usuario_id_fk": {
+          "name": "usuarios_empresas_usuario_id_usuarios_perfis_usuario_id_fk",
+          "tableFrom": "usuarios_empresas",
+          "tableTo": "usuarios_perfis",
+          "columnsFrom": [
+            "usuario_id"
+          ],
+          "columnsTo": [
+            "usuario_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "usuarios_empresas_empresa_id_empresas_id_fk": {
+          "name": "usuarios_empresas_empresa_id_empresas_id_fk",
+          "tableFrom": "usuarios_empresas",
+          "tableTo": "empresas",
+          "columnsFrom": [
+            "empresa_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "usuarios_empresas_usuario_id_empresa_id_pk": {
+          "name": "usuarios_empresas_usuario_id_empresa_id_pk",
+          "columns": [
+            "usuario_id",
+            "empresa_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.usuarios_perfis": {
+      "name": "usuarios_perfis",
+      "schema": "",
+      "columns": {
+        "usuario_id": {
+          "name": "usuario_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "perfil": {
+          "name": "perfil",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ativo": {
+          "name": "ativo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.vinculos_campos_competencia": {
+      "name": "vinculos_campos_competencia",
+      "schema": "",
+      "columns": {
+        "competencia_id": {
+          "name": "competencia_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vinculo_id": {
+          "name": "vinculo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "campo_id": {
+          "name": "campo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ativo": {
+          "name": "ativo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "vinculos_campos_competencia_competencia_id_competencias_id_fk": {
+          "name": "vinculos_campos_competencia_competencia_id_competencias_id_fk",
+          "tableFrom": "vinculos_campos_competencia",
+          "tableTo": "competencias",
+          "columnsFrom": [
+            "competencia_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "vinculos_campos_competencia_vinculo_id_vinculos_empregaticios_id_fk": {
+          "name": "vinculos_campos_competencia_vinculo_id_vinculos_empregaticios_id_fk",
+          "tableFrom": "vinculos_campos_competencia",
+          "tableTo": "vinculos_empregaticios",
+          "columnsFrom": [
+            "vinculo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "vinculos_campos_competencia_campo_id_campos_dinamicos_id_fk": {
+          "name": "vinculos_campos_competencia_campo_id_campos_dinamicos_id_fk",
+          "tableFrom": "vinculos_campos_competencia",
+          "tableTo": "campos_dinamicos",
+          "columnsFrom": [
+            "campo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "vinculos_campos_competencia_competencia_id_vinculo_id_campo_id_pk": {
+          "name": "vinculos_campos_competencia_competencia_id_vinculo_id_campo_id_pk",
+          "columns": [
+            "competencia_id",
+            "vinculo_id",
+            "campo_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.vinculos_empregaticios": {
+      "name": "vinculos_empregaticios",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "pessoa_id": {
+          "name": "pessoa_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "empresa_contratante_id": {
+          "name": "empresa_contratante_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "empresa_lotado_id": {
+          "name": "empresa_lotado_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "setor_lotacao_id": {
+          "name": "setor_lotacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cargo": {
+          "name": "cargo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "admissao": {
+          "name": "admissao",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "salario_contratual": {
+          "name": "salario_contratual",
+          "type": "numeric(18, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ativo": {
+          "name": "ativo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "vinculos_pessoa_idx": {
+          "name": "vinculos_pessoa_idx",
+          "columns": [
+            {
+              "expression": "pessoa_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "vinculo_ativo_pessoa_unico": {
+          "name": "vinculo_ativo_pessoa_unico",
+          "columns": [
+            {
+              "expression": "pessoa_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"vinculos_empregaticios\".\"ativo\" = true",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "vinculos_empregaticios_pessoa_id_pessoas_id_fk": {
+          "name": "vinculos_empregaticios_pessoa_id_pessoas_id_fk",
+          "tableFrom": "vinculos_empregaticios",
+          "tableTo": "pessoas",
+          "columnsFrom": [
+            "pessoa_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "vinculos_empregaticios_empresa_contratante_id_empresas_id_fk": {
+          "name": "vinculos_empregaticios_empresa_contratante_id_empresas_id_fk",
+          "tableFrom": "vinculos_empregaticios",
+          "tableTo": "empresas",
+          "columnsFrom": [
+            "empresa_contratante_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "vinculos_empregaticios_empresa_lotado_id_empresas_id_fk": {
+          "name": "vinculos_empregaticios_empresa_lotado_id_empresas_id_fk",
+          "tableFrom": "vinculos_empregaticios",
+          "tableTo": "empresas",
+          "columnsFrom": [
+            "empresa_lotado_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "vinculos_empregaticios_setor_lotacao_id_setores_id_fk": {
+          "name": "vinculos_empregaticios_setor_lotacao_id_setores_id_fk",
+          "tableFrom": "vinculos_empregaticios",
+          "tableTo": "setores",
+          "columnsFrom": [
+            "setor_lotacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "vinculos_salario_valido": {
+          "name": "vinculos_salario_valido",
+          "value": "salario_contratual >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.vinculos_grupos": {
+      "name": "vinculos_grupos",
+      "schema": "",
+      "columns": {
+        "grupo_id": {
+          "name": "grupo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vinculo_id": {
+          "name": "vinculo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "vinculos_grupos_funcionario_idx": {
+          "name": "vinculos_grupos_funcionario_idx",
+          "columns": [
+            {
+              "expression": "vinculo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "vinculos_grupos_grupo_id_grupos_dinamicos_id_fk": {
+          "name": "vinculos_grupos_grupo_id_grupos_dinamicos_id_fk",
+          "tableFrom": "vinculos_grupos",
+          "tableTo": "grupos_dinamicos",
+          "columnsFrom": [
+            "grupo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "vinculos_grupos_vinculo_id_vinculos_empregaticios_id_fk": {
+          "name": "vinculos_grupos_vinculo_id_vinculos_empregaticios_id_fk",
+          "tableFrom": "vinculos_grupos",
+          "tableTo": "vinculos_empregaticios",
+          "columnsFrom": [
+            "vinculo_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "vinculos_grupos_grupo_id_vinculo_id_pk": {
+          "name": "vinculos_grupos_grupo_id_vinculo_id_pk",
+          "columns": [
+            "grupo_id",
+            "vinculo_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

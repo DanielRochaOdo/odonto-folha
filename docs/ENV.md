@@ -19,6 +19,21 @@ a mesma origem pública, por exemplo `https://odonto-folha.vercel.app`.
 `DIRECT_URL` é somente para tarefas administrativas de migration; não a
 configure no runtime. O processo da aplicação não executa migrations nem seeds.
 
+## Migrations por ambiente
+
+As migrations são aplicadas em um destino por execução. Não use o `DIRECT_URL`
+do `.env` geral para escolher o banco implicitamente. Crie, localmente e sem
+versionar, os arquivos `.env.migration.development` e
+`.env.migration.production`; cada um deve conter somente o `DIRECT_URL` direto
+da branch Neon correspondente, com pooling desabilitado. O `.gitignore` já
+ignora esses arquivos.
+
+Na raiz do repositório, use `pnpm db:migrate:dev` para desenvolvimento ou
+`pnpm db:migrate:prod` para produção. O comando de produção exige digitar
+`PRODUCAO` no terminal. Confirme no painel Neon que a branch e o projeto da URL
+correspondem ao destino antes de executar. Rodar um comando não aplica a
+migration no outro ambiente; execute cada um separadamente após revisar o SQL.
+
 ## Web Next.js
 
 Não precisa de URL de API na Vercel: as chamadas relativas `/api/...` são

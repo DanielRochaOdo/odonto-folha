@@ -34,6 +34,13 @@ export function criarCadastroPostgres(conexao: ConexaoFolha) {
     };
   }
 
+  async function listarGruposVinculaveis() {
+    return db.select({ id: t.gruposDinamicos.id, nome: t.gruposDinamicos.nome,
+      origem: t.gruposDinamicos.origem })
+      .from(t.gruposDinamicos).where(eq(t.gruposDinamicos.ativo, true))
+      .orderBy(t.gruposDinamicos.origem, t.gruposDinamicos.nome);
+  }
+
   async function cadastrarEmpresa(nome: string, autorId: string) {
     return db.transaction(async tx => {
       const [empresa] = await tx.insert(t.empresas).values({ nome: nome.trim() })
@@ -56,9 +63,17 @@ export function criarCadastroPostgres(conexao: ConexaoFolha) {
     empresaLotadoId: string; setorLotacaoId: string; cargo: string;
     admissao: string; salarioContratual: number;
   };
-  async function contratar(dados: NovoFuncionario, autorId: string) {
+  async function contratar(dados: NovoFuncionario, autorId: string, gruposIds: string[] = []) {
     if (!validarCpf(dados.cpf)) throw new Error('CPF inválido');
     return db.transaction(async tx => {
+      const gruposSelecionados = [...new Set(gruposIds)];
+      if (gruposSelecionados.length) {
+        const gruposAtivos = await tx.select({ id: t.gruposDinamicos.id })
+          .from(t.gruposDinamicos).where(eq(t.gruposDinamicos.ativo, true));
+        const gruposAtivosIds = new Set(gruposAtivos.map(grupo => grupo.id));
+        if (gruposSelecionados.some(grupoId => !gruposAtivosIds.has(grupoId)))
+          throw new Error('Um ou mais benefícios ou comissões selecionados não estão ativos.');
+      }
       const [anterior] = await tx.select().from(t.pessoas)
         .where(eq(t.pessoas.cpf, dados.cpf)).limit(1);
       const pessoaId = anterior?.id ?? (await tx.insert(t.pessoas)
@@ -73,7 +88,16 @@ export function criarCadastroPostgres(conexao: ConexaoFolha) {
       }).returning({ id: t.vinculosEmpregaticios.id });
       await tx.insert(t.auditoria).values(auditar(autorId, 'VINCULO', vinculo.id,
         anterior ? 'RECONTRATADO' : 'CONTRATADO'));
-      return { id: vinculo.id };
+      if (gruposSelecionados.length) {
+        await tx.insert(t.vinculosGrupos).values(gruposSelecionados.map(grupoId => ({
+          grupoId, vinculoId: vinculo.id,
+        })));
+        await tx.insert(t.auditoria).values(gruposSelecionados.map(grupoId => ({
+          ...auditar(autorId, 'GRUPO', grupoId, 'FUNCIONARIO_VINCULADO'),
+          detalhes: { vinculoId: vinculo.id },
+        })));
+      }
+      return { id: vinculo.id, gruposVinculados: gruposSelecionados.length };
     });
   }
 
@@ -152,6 +176,6 @@ export function criarCadastroPostgres(conexao: ConexaoFolha) {
     });
   }
 
-  return { listar, cadastrarEmpresa, cadastrarSetor, contratar,
+  return { listar, listarGruposVinculaveis, cadastrarEmpresa, cadastrarSetor, contratar,
     desligar, movimentar, listarUsuarios, definirPerfil };
 }

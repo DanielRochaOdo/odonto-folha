@@ -1,6 +1,6 @@
 /**
  * Entrada exclusiva do CLI Better Auth. NÃO usada pelo servidor Hono.
- * Carrega o .env local, sem imprimi-lo nem publicar credenciais.
+ * Carrega o ambiente local e a conexão exclusiva do destino de migration.
  */
 import { existsSync } from 'node:fs';
 import { loadEnvFile } from 'node:process';
@@ -10,6 +10,23 @@ import { validarAmbiente } from './src/config/ambiente';
 
 const raiz = fileURLToPath(new URL('../../.env', import.meta.url));
 if (existsSync(raiz)) loadEnvFile(raiz);
+
+const arquivosAmbiente = {
+  development: '../../.env.migration.development',
+  production: '../../.env.migration.production',
+} as const;
+const destino = process.env.MIGRATION_TARGET;
+if (!destino || !(destino in arquivosAmbiente)) {
+  throw new Error('Defina MIGRATION_TARGET usando pnpm db:migrate:dev ou pnpm db:migrate:prod');
+}
+const arquivoDestino = fileURLToPath(
+  new URL(arquivosAmbiente[destino as keyof typeof arquivosAmbiente], import.meta.url),
+);
+if (!existsSync(arquivoDestino)) {
+  throw new Error(`Arquivo de conexão de migration não encontrado: ${arquivoDestino}`);
+}
+delete process.env.DIRECT_URL;
+loadEnvFile(arquivoDestino);
 
 const ambiente = validarAmbiente(process.env);
 const direto = process.env.DIRECT_URL;

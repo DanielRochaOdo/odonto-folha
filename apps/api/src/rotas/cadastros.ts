@@ -11,6 +11,7 @@ const funcionario = z.object({
   cargo: titulo, empresaContratanteId: uuid, empresaLotadoId: uuid,
   setorLotacaoId: uuid, admissao: z.iso.date(),
   salarioContratual: z.number().finite().nonnegative(),
+  gruposIds: z.array(uuid).max(10000).default([]),
 }).strict();
 const movimento = z.object({
   vinculoId: uuid, ano: z.number().int().min(2000).max(2200),
@@ -34,6 +35,9 @@ export function criarRotasCadastros(
   });
 
   app.get('/cadastros/geral', async c => c.json(await deps.cadastro.listar()));
+
+  app.get('/cadastros/grupos-vinculaveis', async c =>
+    c.json(await deps.cadastro.listarGruposVinculaveis()));
 
   app.post('/cadastros/empresas', async c => {
     const body = z.object({ nome: titulo }).strict().safeParse(
@@ -60,8 +64,22 @@ export function criarRotasCadastros(
     if (!body.success) return c.json({ erro: 'Dados inválidos' }, 400);
     try {
       return c.json(await deps.cadastro.contratar(
-        body.data, c.get('sessao').usuarioId), 201);
-    } catch { return c.json({ erro: 'Não foi possível cadastrar o funcionário' }, 400); }
+        body.data, c.get('sessao').usuarioId, body.data.gruposIds), 201);
+    } catch (erro) {
+      if (erro instanceof Error && erro.message === 'CPF inválido')
+        return c.json({ erro: 'CPF inválido. Confira os dígitos informados.' }, 400);
+      if (erro instanceof Error && erro.message.startsWith('Um ou mais'))
+        return c.json({ erro: erro.message }, 400);
+      const banco = erro as { code?: unknown; constraint?: unknown };
+      if (banco?.code === '23505' && banco.constraint === 'vinculo_ativo_pessoa_unico')
+        return c.json({ erro: 'Este CPF já possui um vínculo ativo.' }, 400);
+      console.error('Falha ao cadastrar funcionário', {
+        tipo: erro instanceof Error ? erro.name : typeof erro,
+        codigo: banco?.code,
+        restricao: banco?.constraint,
+      });
+      return c.json({ erro: 'Não foi possível cadastrar o funcionário' }, 400);
+    }
   });
 
   app.post('/cadastros/funcionarios/:id/desligar', async c => {

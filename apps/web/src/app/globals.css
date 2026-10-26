@@ -92,8 +92,14 @@
 .config-selecao{margin:18px 0 22px}
 .config-selecao h4{margin-bottom:4px}
 .config-selecao p{font-size:12px;margin:0 0 14px}
-.config-lista-grupos{display:flex;flex-wrap:wrap;gap:10px}
-.config-grupo{min-width:165px;max-width:100%;display:flex;flex-wrap:wrap;align-items:center;
+.config-lista-grupos{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));gap:10px}
+.config-grupo-cartao{min-width:0;position:relative;display:flex;align-items:stretch;gap:8px;
+  padding:8px;border:1px solid var(--linha);border-radius:14px;background:color-mix(in srgb,var(--superficie) 82%,transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.09);-webkit-backdrop-filter:blur(14px) saturate(120%);
+  backdrop-filter:blur(14px) saturate(120%)}
+.config-grupo-cartao.selecionado{border-color:var(--verde);box-shadow:inset 0 0 0 1px var(--verde)}
+.config-grupo-cartao.arquivado{opacity:.8}
+.config-grupo{min-width:0;width:100%;max-width:100%;display:flex;flex-wrap:wrap;align-items:center;
   gap:5px 10px;text-align:left;border:1px solid var(--linha);
   border-radius:10px;background:var(--superficie);color:var(--texto);padding:12px 15px}
 .config-grupo span{font-weight:700;width:100%;overflow-wrap:anywhere}
@@ -101,6 +107,45 @@
 .config-grupo:hover{border-color:var(--verde)}
 .config-grupo.ativo{border-color:var(--verde);background:var(--fundo);
   box-shadow:inset 0 0 0 1px var(--verde)}
+.config-grupo-acoes{display:flex;flex-direction:column;justify-content:center;gap:6px;flex:0 0 auto}
+.config-grupo-acoes .acao-cadastro-icone{width:34px;height:34px;flex-basis:34px}
+.config-selecao-cabecalho{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.config-mostrar-excluidos{display:flex;align-items:center;gap:7px;padding:8px 10px;border:1px solid var(--linha);
+  border-radius:9px;color:var(--suave);font-size:12px}
+.config-mostrar-excluidos input{accent-color:var(--verde)}
+.config-lista-funcionarios-vinculados li{display:flex;align-items:center;gap:8px}
+.config-lista-funcionarios-vinculados li span{min-width:0;overflow-wrap:anywhere}
+.config-lista-funcionarios-vinculados .acao-cadastro-icone{width:28px;height:28px;flex-basis:28px}
+.config-aviso-arquivado{padding:10px 12px;border:1px solid var(--linha);border-radius:9px;
+  background:var(--fundo);font-size:12px;color:var(--suave)}
+.config-modal-edicao .config-modal-corpo{padding-top:20px}
+.config-modal-edicao .config-modal-acoes{justify-content:flex-end}
+.config-modal-edicao-completa{width:min(100%,900px)}
+.config-edicao-secao{padding:15px 0;border-bottom:1px solid var(--linha)}
+.config-edicao-secao:first-child{padding-top:0}
+.config-edicao-secao:last-of-type{border-bottom:0}
+.config-edicao-secao h4{font-size:14px;margin:0 0 10px}
+.config-edicao-secao p{font-size:11px;margin:0;color:var(--suave)}
+.config-edicao-secao-topo{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.config-edicao-secao-topo>span{color:var(--suave);font-size:11px;white-space:nowrap}
+.config-edicao-campos-lista{display:grid;gap:10px;max-height:360px;overflow:auto;padding:2px}
+.config-edicao-campo{min-width:0;margin:0;padding:14px;border:1px solid var(--linha);border-radius:11px;
+  background:color-mix(in srgb,var(--fundo) 76%,transparent)}
+.config-edicao-campo legend{max-width:90%;padding:0 6px;color:var(--texto);font-size:12px;font-weight:750;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.config-edicao-campo .config-campos-form{gap:12px}
+.config-edicao-campo .config-campos-form label.config-edicao-campo-ativo{grid-column:1/-1;
+  display:flex;flex-direction:row;align-items:center;gap:8px;
+  font-size:11px;font-weight:600;color:var(--suave)}
+.config-edicao-campo .config-edicao-campo-ativo input{accent-color:var(--verde);width:16px;height:16px;padding:0}
+.config-busca-edicao-funcionario{display:flex;flex-direction:column;gap:7px;margin:10px 0;
+  color:var(--texto);font-size:12px;font-weight:700}
+.config-busca-edicao-funcionario input{padding:11px;border:1px solid var(--linha);border-radius:9px;
+  background:var(--superficie);color:var(--texto);font:inherit}
+.config-checklist-edicao{max-height:240px;overflow:auto}
+@media(prefers-reduced-transparency:reduce){
+  .config-grupo-cartao{background:var(--superficie);-webkit-backdrop-filter:none;backdrop-filter:none}
+}
 .config-form-campo{margin-top:4px}
 .config-form-campo .config-campos-form{grid-template-columns:repeat(2,minmax(0,1fr))}
 .config-tabela-titulo{display:flex;align-items:baseline;gap:12px;margin-bottom:12px}
@@ -128,6 +173,9 @@
   .modal-usuarios{padding:20px}
   .config-linha-acoes .acao-principal{width:100%}
   .config-grupo{min-width:0;width:100%}
+  .config-lista-grupos{grid-template-columns:minmax(0,1fr)}
+  .config-modal-edicao .config-modal-acoes{flex-direction:column-reverse;align-items:stretch}
+  .config-edicao-campo .config-campos-form{grid-template-columns:1fr}
   .barra-lateral{gap:8px}
   .rodape-lateral .perfil-atual{gap:6px}
   .rodape-lateral .perfil-atual .circulo-perfil{width:30px;height:30px}
@@ -174,6 +222,7 @@
 .config-progresso{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
   list-style:none;gap:12px;padding:12px 28px 21px;margin:0;
   border-bottom:1px solid var(--linha)}
+.config-progresso-duas-etapas{grid-template-columns:repeat(2,minmax(0,1fr))}
 .config-progresso li{display:flex;align-items:center;gap:9px;min-width:0;
   color:var(--suave)}
 .config-progresso li span{display:grid;place-items:center;flex-shrink:0;width:28px;height:28px;
@@ -202,6 +251,7 @@
   font-size:12px;cursor:pointer;min-width:0}
 .config-item-funcionario input{accent-color:var(--verde);width:16px;height:16px;flex-shrink:0}
 .config-item-funcionario span{overflow-wrap:anywhere}
+.config-item-funcionario small{display:block;margin-top:3px;color:var(--suave);font-size:10px}
 .config-item-funcionario:has(input:checked){border-color:var(--verde);background:var(--fundo)}
 .config-aviso-vinculos{background:var(--fundo);border:1px solid var(--linha);
   border-radius:10px;padding:16px;color:var(--suave)}
@@ -307,9 +357,7 @@ select:disabled{opacity:.62;cursor:not-allowed}
   background:color-mix(in srgb,var(--verde) 11%,var(--superficie));
   box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--verde) 22%,transparent)}
 .cartao-total-empresa:focus-visible{outline:3px solid var(--foco);outline-offset:2px}
-.cartao-total-empresa>span{display:block;color:var(--suave);font-size:10px;font-weight:700;
-  letter-spacing:.04em;text-transform:uppercase}
-.nome-total-empresa{display:block;overflow:hidden;margin:4px 0 10px;color:var(--texto);
+.nome-total-empresa{display:block;overflow:hidden;margin:0 0 10px;color:var(--texto);
   font-size:13px;text-overflow:ellipsis;white-space:nowrap}
 .valor-total-empresa{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .valor-total-empresa>strong{font-size:17px;font-variant-numeric:tabular-nums}
@@ -687,3 +735,66 @@ select:disabled{opacity:.62;cursor:not-allowed}
   .cabecalho-app:has(.controle-fechamento){align-items:flex-start;flex-wrap:wrap}
   .controle-fechamento{width:100%;min-width:0}
 }
+
+/* Funcionários em cards, mantendo os dados obrigatórios visíveis. */
+.grade-cartoes-funcionarios{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,310px),1fr));gap:12px;
+}
+.cartao-funcionario-cadastro{
+  min-width:0;padding:16px;border:1px solid color-mix(in srgb,var(--linha) 78%,transparent);
+  border-radius:16px;background:color-mix(in srgb,var(--superficie) 86%,transparent);
+  box-shadow:0 12px 30px rgba(15,65,76,.055),inset 0 1px 0 rgba(255,255,255,.12);
+  -webkit-backdrop-filter:blur(16px) saturate(122%);backdrop-filter:blur(16px) saturate(122%);
+}
+.cabecalho-cartao-funcionario{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding-bottom:12px;border-bottom:1px solid color-mix(in srgb,var(--linha) 72%,transparent)}
+.rotulo-cartao-funcionario,.dados-cartao-funcionario dt{
+  display:block;color:var(--suave);font-size:10px;font-weight:750;letter-spacing:.55px;text-transform:uppercase;
+}
+.cabecalho-cartao-funcionario h3{margin:4px 0 0;font-size:15px;line-height:1.4;overflow-wrap:anywhere}
+.situacao-funcionario{flex:0 0 auto;padding:4px 8px;border-radius:999px;font-size:10px;font-weight:750}
+.situacao-funcionario.ativo{color:var(--verde);background:color-mix(in srgb,var(--verde) 12%,var(--superficie))}
+.situacao-funcionario.inativo{color:var(--suave);background:color-mix(in srgb,var(--suave) 12%,var(--superficie))}
+.situacao-acoes-funcionario{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.dados-cartao-funcionario{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;
+  margin:14px 0 0}
+.dados-cartao-funcionario>div{min-width:0}
+.dados-cartao-funcionario dt{margin-bottom:4px;letter-spacing:.2px}
+.dados-cartao-funcionario dd{margin:0;font-size:12px;font-weight:650;line-height:1.45;overflow-wrap:anywhere}
+.dados-cartao-funcionario .salario-cartao-funcionario{grid-column:1/-1;display:flex;align-items:center;
+  justify-content:space-between;gap:10px;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--linha) 72%,transparent)}
+.dados-cartao-funcionario .salario-cartao-funcionario dt{margin:0}
+.dados-cartao-funcionario .salario-cartao-funcionario dd{font-size:14px;font-weight:800}
+.estado-vazio-cadastros{padding:22px 12px;text-align:center}
+.config-desconto-beneficio{grid-column:1/-1;display:grid;gap:8px;margin:4px 0 0;padding:10px 12px;
+  border:1px solid color-mix(in srgb,var(--linha) 78%,transparent);border-radius:12px;
+  background:color-mix(in srgb,var(--superficie) 82%,transparent)}
+.config-campos-form .config-desconto-alternador{display:flex;flex-direction:row;align-items:center;gap:9px;
+  margin:0;cursor:pointer}
+.config-campos-form .config-desconto-alternador input{flex:0 0 16px;width:16px;height:16px;
+  margin:0;padding:0;accent-color:var(--verde)}
+.config-desconto-alternador span{display:grid;gap:4px}
+.config-desconto-alternador small,.config-ajuda-bases{color:var(--suave);font-size:11px;line-height:1.55}
+.config-desconto-beneficio>.config-campos-form{grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;margin-top:4px}
+.config-desconto-beneficio>.config-campos-form .config-ajuda-bases{grid-column:1/-1;margin:0}
+.config-desconto-percentual{display:flex;align-items:center;gap:8px}
+.config-desconto-percentual input{max-width:150px}
+.config-percentual-desconto{display:flex;align-items:center;gap:5px}
+.config-percentual-desconto>span{color:var(--suave);font-size:12px}
+@media(max-width:600px){
+  .config-desconto-beneficio>.config-campos-form{grid-template-columns:1fr}
+}
+@media(max-width:520px){
+  .grade-cartoes-funcionarios{grid-template-columns:minmax(0,1fr)}
+  .cartao-funcionario-cadastro{padding:14px}
+}
+@media(prefers-reduced-transparency:reduce){
+  .cartao-funcionario-cadastro{background:var(--superficie);-webkit-backdrop-filter:none;backdrop-filter:none}
+}
+.metadados-cartao-competencia{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.status-cartao-competencia{width:max-content;padding:4px 9px;border-radius:999px;
+  font-size:10px;font-weight:800;line-height:1.2}
+.status-cartao-competencia.aberta{background:color-mix(in srgb,var(--verde) 16%,transparent);color:var(--verde)}
+.status-cartao-competencia.fechada{background:var(--fundo);color:var(--suave)}
+.cartao-competencia .abrir-detalhes-competencia{margin-top:-8px}

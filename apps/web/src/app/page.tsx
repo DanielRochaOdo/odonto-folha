@@ -20,13 +20,13 @@ import ConfigCampos from './componentes/ConfigCampos';
 import Configuracoes from './componentes/Configuracoes';
 import PainelSetor from './componentes/PainelSetor';
 import { formatarData } from './datas';
-import { atualizarMascaraComCursor, mascaraFinal,
+import { atualizarMascaraComCursor, formatarCpf, mascaraFinal,
   numeroDaMascara, prepararMascaraParaEdicao } from './mascaras';
 
 type Perfil = 'ADMIN' | 'DP' | 'ADM' | 'CENTRAL';
 type Sessao = { usuarioId: string; perfil: Perfil };
 type CompetenciaResumo = { id: string; ano: number; mes: number; revisao: number;
-  fechadaEm: string | null; fechadaComPendencias: boolean };
+  criadaEm?: string; fechadaEm: string | null; fechadaComPendencias: boolean };
 type PendenciaFechamento = { responsavel: string; quantidade: number;
   grupos: { nome: string; quantidade: number }[] };
 type CampoDinamico = {
@@ -35,6 +35,7 @@ type CampoDinamico = {
   tipo: 'moeda' | 'percentual' | 'data' | 'horario';
   classificacao: 'provento' | 'desconto' | 'informativo';
   ordemGlobal: number;
+  campoOrigemDesconto?: string;
 };
 type Celula = {
   situacao: 'preenchido' | 'pendente' | 'nao_aplicavel';
@@ -66,6 +67,7 @@ type Consolidacao = {
     concluido: boolean; concluidoEm: string | null; concluidoPor: string | null;
   }[];
   colunas: CampoDinamico[];
+  percentuaisDesconto: Record<string, number>;
   abas: AbaEmpresa[];
   nomes: { empresas: Record<string, string>; setores: Record<string, string> };
 };
@@ -80,6 +82,14 @@ const mes = (ano: number, numero: number) => new Intl.DateTimeFormat('pt-BR',
 const nomeMes = (ano: number, numero: number) => {
   const titulo = mes(ano, numero);
   return titulo.charAt(0).toUpperCase() + titulo.slice(1);
+};
+const dataAbertura = (valor?: string) => {
+  if (!valor) return 'Data de abertura indisponível';
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) return 'Data de abertura indisponível';
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  }).format(data);
 };
 
 async function lerErro(resposta: Response): Promise<string> {
@@ -309,15 +319,16 @@ export default function PaginaInicial() {
   async function salvarCelula(linha: Linha, campo: CampoDinamico, entrada: string) {
     if (!consolidado || !competenciaSelecionada || salvando) return;
     const anterior = linha.celulas[campo.id];
-    const valorAnterior = anterior?.valor === null || anterior?.valor === undefined
-      ? '' : String(anterior.valor);
+    const valorAnterior = campo.campoOrigemDesconto
+      ? String(consolidado.percentuaisDesconto[`${linha.funcionario.id}:${campo.id}`] ?? '')
+      : anterior?.valor === null || anterior?.valor === undefined ? '' : String(anterior.valor);
     if (entrada === valorAnterior || anterior?.situacao === 'nao_aplicavel') return;
     if (!entrada.trim()) { setErro('Para limpar use a ação específica de remover valor.'); return; }
-    if ((campo.tipo === 'moeda' || campo.tipo === 'percentual') && valorAnterior !== '' &&
+    if ((campo.campoOrigemDesconto || campo.tipo === 'moeda' || campo.tipo === 'percentual') && valorAnterior !== '' &&
       numeroApi(entrada) === Number(valorAnterior)) return;
     if (anterior?.quantidadeParcelas && !window.confirm(
       'Substituir as parcelas pelo total direto, preservando o histórico?')) return;
-    const valor = campo.tipo === 'moeda' || campo.tipo === 'percentual'
+    const valor = campo.campoOrigemDesconto || campo.tipo === 'moeda' || campo.tipo === 'percentual'
       ? numeroApi(entrada) : entrada;
     if (typeof valor === 'number' && !Number.isFinite(valor)) {
       setErro('Valor numérico inválido'); return;
@@ -327,7 +338,13 @@ export default function PaginaInicial() {
       funcionarioId: linha.funcionario.id, campoId: campo.id, valor,
       modo: 'total', versaoEsperada: consolidado.revisao, confirmarSubstituicao: true,
     };
-    if (campo.origem === 'BENEFICIO') {
+    if (campo.campoOrigemDesconto) {
+      caminho = '/api/beneficios/' + encodeURIComponent(competenciaSelecionada) +
+        '/percentual-desconto';
+      corpo = { funcionarioId: linha.funcionario.id,
+        campoOrigemId: campo.campoOrigemDesconto, percentual: valor,
+        versaoEsperada: consolidado.versaoBeneficios };
+    } else if (campo.origem === 'BENEFICIO') {
       const escolha = window.prompt(
         'Benefício recorrente: digite R para aplicar neste mês e nos próximos; M para exceção apenas neste mês. Cancelar não salva.',
         'R',
@@ -576,6 +593,16 @@ export default function PaginaInicial() {
     </main>
   );
 
+  const enviosComResponsavel = (consolidado?.envios ?? [])
+    .filter(envio => envio.responsavel !== 'NENHUM');
+  const quantidadeEnviosPendentes = enviosComResponsavel.filter(envio => !envio.concluido).length;
+  const totalFuncionariosConsolidacao = consolidado?.abas.reduce(
+    (total, empresa) => total + empresa.funcionarios.length, 0,
+  ) ?? 0;
+  const totalGeralConsolidacao = consolidado?.abas.reduce(
+    (total, empresa) => total + empresa.totalAritmetico, 0,
+  ) ?? 0;
+
   return (
     <div className={`aplicacao${barraLateralColapsada ? ' sidebar-recolhida' : ''}`}>
       <aside className="barra-lateral">
@@ -660,7 +687,13 @@ export default function PaginaInicial() {
                     onClick={() => void abrirCompetencia(c.id)}>
                     <span className="tag-competencia">COMPETÊNCIA</span>
                     <strong>{nomeMes(c.ano, c.mes)}</strong>
-                    <small>Revisão {c.revisao} · {c.fechadaEm ? 'Fechada · ' : ''}Abrir detalhes</small>
+                    <span className="metadados-cartao-competencia">
+                      <span className={'status-cartao-competencia ' + (c.fechadaEm ? 'fechada' : 'aberta')}>
+                        {c.fechadaEm ? 'Fechada' : 'Aberta'}
+                      </span>
+                      <small>Aberta em {dataAbertura(c.criadaEm)}</small>
+                    </span>
+                    <small className="abrir-detalhes-competencia">Abrir detalhes</small>
                     <ArrowUpRightIcon className="seta-competencia" aria-hidden="true" />
                   </button>)}
               </div>
@@ -719,27 +752,39 @@ export default function PaginaInicial() {
                         atual === empresa.empresaContratanteId ? null : empresa.empresaContratanteId);
                       setPaginaConsolidacao(1);
                     }}>
-                  <span>Total por empresa</span>
-                  <strong className="nome-total-empresa">{nomeEmpresa}</strong>
+                  <strong className="nome-total-empresa">{nomeEmpresa} ({empresa.funcionarios.length})</strong>
                   <div className="valor-total-empresa">
                     <strong>{dinheiro(empresa.totalAritmetico)}</strong>
                     {empresa.parcial && <span className="selo-total-parcial">Parcial</span>}
                   </div>
                   </button>;
                 })}
+                <button type="button" className="cartao-total-empresa cartao-total-geral"
+                  aria-pressed={!empresaFiltroId}
+                  aria-label={`Exibir todos os ${totalFuncionariosConsolidacao} funcionários`}
+                  onClick={() => {
+                    setEmpresaFiltroId(null);
+                    setPaginaConsolidacao(1);
+                  }}>
+                  <strong className="nome-total-empresa">Total ({totalFuncionariosConsolidacao})</strong>
+                  <div className="valor-total-empresa">
+                    <strong>{dinheiro(totalGeralConsolidacao)}</strong>
+                    {consolidado.abas.some(empresa => empresa.parcial) &&
+                      <span className="selo-total-parcial">Parcial</span>}
+                  </div>
+                </button>
               </section>
               {empresaFiltroId && <p className="filtro-empresa-ativo" role="status">
                 Exibindo {linhasConsolidacaoFiltradas.length} funcionário(s) de{' '}
                 {consolidado.nomes.empresas[empresaFiltroId] ?? 'empresa não identificada'}.
                 {' '}Clique no card novamente para limpar o filtro.
               </p>}
-              {!!(consolidado.envios ?? []).filter(envio => envio.responsavel !== 'NENHUM').length &&
+              {!!enviosComResponsavel.length &&
                 <details className="envios-consolidacao">
                   <summary>Envios de comissões · {(consolidado.envios ?? []).filter(envio =>
-                    envio.responsavel !== 'NENHUM').length}</summary>
+                    envio.responsavel !== 'NENHUM').length}{' | '}Pendentes · {quantidadeEnviosPendentes}</summary>
                   <div className="lista-envios-consolidacao">
-                    {(consolidado.envios ?? []).filter(envio => envio.responsavel !== 'NENHUM')
-                      .map(envio => <div key={envio.grupoId} className="feedback">
+                    {enviosComResponsavel.map(envio => <div key={envio.grupoId} className="feedback">
                         <strong>{consolidado.colunas.find(c => c.grupoId === envio.grupoId)?.grupoNome ?? 'Comissão'}</strong>
                         {' · '}{envio.responsavel} · {envio.concluido ? 'Concluída' : 'Pendente'}
                         {envio.concluido && <button className="botao-secundario"
@@ -769,7 +814,8 @@ export default function PaginaInicial() {
                       <select value={campoMassaId} disabled={salvando}
                         onChange={evento => { setCampoMassaId(evento.target.value); setValorMassa(''); }}>
                         <option value="">Selecione beneficio ou comissao</option>
-                        {consolidado.colunas.map(c => <option key={c.id} value={c.id}>{c.grupoNome} - {c.nome}</option>)}
+                        {consolidado.colunas.filter(c => !c.campoOrigemDesconto)
+                          .map(c => <option key={c.id} value={c.id}>{c.grupoNome} - {c.nome}</option>)}
                       </select>
                     </label>
                     {(() => {
@@ -844,7 +890,7 @@ export default function PaginaInicial() {
                               <dt>Cargo</dt><dd title={linha.funcionario.cargo}>{linha.funcionario.cargo}</dd>
                             </div>
                             <div className="dado-funcionario">
-                              <dt>CPF</dt><dd className="codigo">{linha.funcionario.cpf}</dd>
+                              <dt>CPF</dt><dd className="codigo">{formatarCpf(linha.funcionario.cpf)}</dd>
                             </div>
                             <div className="dado-funcionario">
                               <dt>Admissão</dt><dd>{formatarData(linha.funcionario.admissao)}</dd>
@@ -859,30 +905,37 @@ export default function PaginaInicial() {
                       </td>
                       {consolidado.colunas.map(c => {
                         const cel = linha.celulas[c.id];
-                        const valor = cel?.valor === null || cel?.valor === undefined
-                          ? '' : String(cel.valor);
+                        const valor = c.campoOrigemDesconto
+                          ? String(consolidado.percentuaisDesconto[`${linha.funcionario.id}:${c.id}`] ?? '')
+                          : cel?.valor === null || cel?.valor === undefined ? '' : String(cel.valor);
                         const alteravel = !consolidado.fechadaEm && editando === linha.funcionario.id &&
                           cel?.situacao !== 'nao_aplicavel';
                         return <td key={c.id} className="celula-dinamica">
                           {alteravel ? (
                             <span className="editor-valor-mascarado">
-                            <input aria-label={c.nome + ' de ' + linha.funcionario.nome}
+                            <input aria-label={(c.campoOrigemDesconto ? c.nome + ' percentual de ' : c.nome + ' de ') + linha.funcionario.nome}
                               className="editor-celula" key={consolidado.revisao + ':' + c.id}
                               type={c.tipo === 'data' ? 'date' : c.tipo === 'horario' ? 'time' : 'text'}
-                              inputMode={c.tipo === 'moeda' || c.tipo === 'percentual' ? 'decimal' : undefined}
-                              defaultValue={c.tipo === 'moeda' || c.tipo === 'percentual'
-                                ? mascaraFinal(valor, c.tipo) : valor} disabled={salvando}
+                              inputMode={c.campoOrigemDesconto || c.tipo === 'moeda' || c.tipo === 'percentual' ? 'decimal' : undefined}
+                              defaultValue={c.campoOrigemDesconto ? mascaraFinal(valor, 'percentual')
+                                : c.tipo === 'moeda' || c.tipo === 'percentual'
+                                  ? mascaraFinal(valor, c.tipo) : valor} disabled={salvando}
                               onFocus={e => {
-                                if (c.tipo === 'moeda' || c.tipo === 'percentual')
+                                if (c.campoOrigemDesconto) prepararMascaraParaEdicao(e.currentTarget);
+                                else if (c.tipo === 'moeda' || c.tipo === 'percentual')
                                   prepararMascaraParaEdicao(e.currentTarget);
                               }}
                               onChange={e => {
-                                if (c.tipo === 'moeda' || c.tipo === 'percentual')
+                                if (c.campoOrigemDesconto)
+                                  atualizarMascaraComCursor(e.currentTarget, 'percentual');
+                                else if (c.tipo === 'moeda' || c.tipo === 'percentual')
                                   atualizarMascaraComCursor(e.currentTarget,
                                     c.tipo as 'moeda' | 'percentual');
                               }}
                               onBlur={e => {
-                                const entrada = c.tipo === 'moeda' || c.tipo === 'percentual'
+                                const entrada = c.campoOrigemDesconto
+                                  ? mascaraFinal(e.currentTarget.value, 'percentual')
+                                  : c.tipo === 'moeda' || c.tipo === 'percentual'
                                   ? mascaraFinal(e.currentTarget.value, c.tipo) : e.currentTarget.value;
                                 e.currentTarget.value = entrada;
                                 void salvarCelula(linha, c, entrada);
@@ -890,7 +943,8 @@ export default function PaginaInicial() {
                               onKeyDown={e => teclaCelula(e, valor)} />
                             </span>
                           ) : cel?.situacao === 'nao_aplicavel'
-                            ? (editando === linha.funcionario.id
+                            ? c.campoOrigemDesconto ? <span className="nao-aplicavel">—</span>
+                              : (editando === linha.funcionario.id
                               ? <button className="botao-secundario" disabled={salvando || !!consolidado.fechadaEm}
                                 onClick={() => void vincularCelula(linha.funcionario.id, c.id)}>
                                 Vincular
