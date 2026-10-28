@@ -7,7 +7,7 @@ import {
 } from './beneficios';
 
 const dp = { id: 'dp', perfil: 'DP' as const };
-const adm = { id: 'adm', perfil: 'ADM' as const };
+const adm = { id: 'adm', perfil: 'CENTRO_CUSTO' as const, centrosCustoIds: [] };
 const outubro = { ano: 2026, mes: 10 };
 const novembro = { ano: 2026, mes: 11 };
 const campo: CampoDinamico = {

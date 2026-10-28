@@ -4,6 +4,7 @@ import { abrirCompetencia } from '../dominio/competencias';
 import { criarRotasOperacionais, type SessaoOperacional } from './operacionais';
 
 const competencia = { ano: 2026, mes: 10 };
+const centroAdmId = 'centro-adm';
 const f: Funcionario = {
   id: 'v1', empresaContratanteId: 'e1', empresaLotadoId: 'e1',
   setorLotacaoId: 's1', cpf: '00000000001', nome: 'Pessoa de Teste',
@@ -17,7 +18,7 @@ const c: CampoDinamico = {
 function ambiente(sessao: SessaoOperacional | null = null, conflito = false) {
   let estado = abrirCompetencia({ competencia, funcionarios: [f], campos: [c],
     vinculos: [{ funcionarioId: 'v1', campoId: 'c1' }],
-    gruposComissao: [{ grupoId: 'g1', responsavel: 'ADM' }] });
+    gruposComissao: [{ grupoId: 'g1', responsavel: 'ADM', centroCustoId: centroAdmId }] });
   const app = criarRotasOperacionais({
     autenticar: async () => sessao,
     buscarCompetencia: async () => estado,
@@ -35,9 +36,11 @@ function ambiente(sessao: SessaoOperacional | null = null, conflito = false) {
   });
   return { app, consultar: () => estado };
 }
-const dp = { usuarioId: 'dp-exemplo', perfil: 'DP' as const };
-const adm = { usuarioId: 'adm-exemplo', perfil: 'ADM' as const };
-const central = { usuarioId: 'central-exemplo', perfil: 'CENTRAL' as const };
+const dp = { usuarioId: 'dp-exemplo', perfil: 'DP' as const, centrosCustoIds: [] };
+const adm = { usuarioId: 'adm-exemplo', perfil: 'CENTRO_CUSTO' as const,
+  centrosCustoIds: [centroAdmId] };
+const central = { usuarioId: 'central-exemplo', perfil: 'CENTRO_CUSTO' as const,
+  centrosCustoIds: ['centro-central'] };
 describe('Rotas operacionais protegidas, sem banco real', () => {
   it('nega por padrão todo acesso sem sessão', async () => {
     const a = ambiente();

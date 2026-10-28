@@ -133,14 +133,14 @@ export function criarRotasBeneficios(
   });
   app.post('/beneficios/:competenciaId/valores-em-massa', async c => {
     const parsed = valorMassaSchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ erro: 'Dados invÃ¡lidos para aplicaÃ§Ã£o em massa' }, 400);
+    if (!parsed.success) return c.json({ erro: 'Dados inválidos para aplicação em massa' }, 400);
     const competenciaId = c.req.param('competenciaId');
     const estado = await deps.buscarCompetencia(competenciaId);
-    if (!estado) return c.json({ erro: 'CompetÃªncia inexistente' }, 404);
+    if (!estado) return c.json({ erro: 'Competência inexistente' }, 404);
     try {
       const anterior = await deps.beneficios.carregar();
       if (anterior.versao !== parsed.data.versaoEsperada)
-        return c.json({ erro: 'Valores alterados; atualize a competÃªncia.' }, 409);
+        return c.json({ erro: 'Valores alterados; atualize a competência.' }, 409);
       let novo = anterior;
       for (const funcionarioId of [...new Set(parsed.data.funcionariosIds)]) {
         novo = parsed.data.acao === 'base'

@@ -11,6 +11,7 @@ import { podeEditarConsolidacao } from '../dominio/permissoes';
 export type SessaoOperacional = {
   usuarioId: string;
   perfil: Perfil;
+  centrosCustoIds: string[];
 };
 export type DependenciasOperacionais = {
   /**
@@ -30,6 +31,10 @@ export type DependenciasOperacionais = {
     id: string; ano: number; mes: number; revisao: number;
   } | null>;
 };
+
+const atorFolha = (sessao: SessaoOperacional) => ({
+  id: sessao.usuarioId, perfil: sessao.perfil, centrosCustoIds: sessao.centrosCustoIds,
+});
 
 const schemaNovaCompetencia = z.object({
   ano: z.number().int().min(2000).max(2200),
@@ -155,7 +160,7 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     try {
       const novo = definirVinculo(estado, corpo.data.funcionarioId, corpo.data.campoId,
-        corpo.data.vinculado, { id: sessao.usuarioId, perfil: sessao.perfil },
+        corpo.data.vinculado, atorFolha(sessao),
         corpo.data.versaoEsperada);
       if (novo === estado) return c.json({ revisao: estado.revisao });
       if (!(await deps.salvarSeRevisao(id, estado.revisao, novo)))
@@ -195,7 +200,7 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (pendencias.length && !parsed.data.confirmarPendencias)
       return c.json({ codigo: 'PENDENCIAS', revisao: estado.revisao, pendencias }, 409);
     try {
-      const novo = fecharCompetencia(estado, { id: sessao.usuarioId, perfil: sessao.perfil },
+      const novo = fecharCompetencia(estado, atorFolha(sessao),
         parsed.data.versaoEsperada, pendencias.length > 0);
       if (!(await deps.salvarSeRevisao(id, estado.revisao, novo)))
         return c.json({ codigo: 'CONFLITO', erro: 'A competência mudou. Atualize antes de fechar.' }, 409);
@@ -217,7 +222,7 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     const estado = await deps.buscarCompetencia(id);
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     try {
-      const novo = reabrirCompetencia(estado, { id: sessao.usuarioId, perfil: sessao.perfil },
+      const novo = reabrirCompetencia(estado, atorFolha(sessao),
         parsed.data.versaoEsperada);
       if (novo === estado) return c.json({ revisao: estado.revisao, fechadaEm: null });
       if (!(await deps.salvarSeRevisao(id, estado.revisao, novo)))
@@ -235,7 +240,8 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     const envio = estado.envios.find(e => e.grupoId === c.req.param('grupo'));
     if (!envio) return c.json({ erro: 'Comissão não encontrada' }, 404);
-    if (!podeEditarConsolidacao(sessao.perfil) && sessao.perfil !== envio.responsavel)
+    if (!podeEditarConsolidacao(sessao.perfil) &&
+      (!envio.centroCustoId || !sessao.centrosCustoIds.includes(envio.centroCustoId)))
       return c.json({ erro: 'Comissão fora do escopo' }, 403);
     const campos = estado.campos.filter(campo => campo.origem === 'COMISSAO' &&
       campo.grupoId === envio.grupoId);
@@ -272,7 +278,7 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     try {
       const resultado = salvarLancamento(estado, parsed.data,
-        { id: sessao.usuarioId, perfil: sessao.perfil });
+        atorFolha(sessao));
       if (!(await deps.salvarSeRevisao(c.req.param('id'), estado.revisao, resultado.estado)))
         return c.json({ erro: 'Conflito de edição: atualize a competência' }, 409);
       return c.json({ revisao: resultado.estado.revisao, avisos: resultado.avisos });
@@ -285,15 +291,15 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
   app.post('/competencias/:id/lancamentos-em-massa', async c => {
     const sessao = c.get('sessao') as SessaoOperacional;
     const parsed = schemaLancamentosEmMassa.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ erro: 'Dados de lanÃ§amento em massa invÃ¡lidos' }, 400);
+    if (!parsed.success) return c.json({ erro: 'Dados de lançamento em massa inválidos' }, 400);
     const id = c.req.param('id');
     const estado = await deps.buscarCompetencia(id);
-    if (!estado) return c.json({ erro: 'CompetÃªncia nÃ£o encontrada' }, 404);
+    if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     try {
       const resultado = salvarLancamentosEmMassa(estado, parsed.data,
-        { id: sessao.usuarioId, perfil: sessao.perfil });
+        atorFolha(sessao));
       if (!(await deps.salvarSeRevisao(id, estado.revisao, resultado.estado)))
-        return c.json({ erro: 'Conflito de ediÃ§Ã£o: atualize a competÃªncia' }, 409);
+        return c.json({ erro: 'Conflito de edição: atualize a competência' }, 409);
       return c.json({ revisao: resultado.estado.revisao, avisos: resultado.avisos,
         salvos: parsed.data.funcionariosIds.length });
     } catch (e) {
@@ -310,7 +316,7 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     try {
       const novo = concluirComissao(estado, c.req.param('grupo'),
-        { id: sessao.usuarioId, perfil: sessao.perfil },
+        atorFolha(sessao),
         parsed.data.versaoEsperada, parsed.data.confirmarPendentes);
       if (!(await deps.salvarSeRevisao(c.req.param('id'), estado.revisao, novo)))
         return c.json({ erro: 'Conflito de edição' }, 409);
@@ -328,7 +334,7 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     try {
       const novo = reabrirComissao(estado, c.req.param('grupo'),
-        { id: sessao.usuarioId, perfil: sessao.perfil }, parsed.data.versaoEsperada);
+        atorFolha(sessao), parsed.data.versaoEsperada);
       if (!(await deps.salvarSeRevisao(c.req.param('id'), estado.revisao, novo)))
         return c.json({ erro: 'Conflito de edição' }, 409);
       return c.json({ revisao: novo.revisao, concluido: false });

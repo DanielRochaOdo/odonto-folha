@@ -1,7 +1,7 @@
 import { and, eq, sql, tabelas, type ConexaoFolha } from '@odontofolha/database';
 
 type Origem = 'BENEFICIO' | 'COMISSAO';
-type Responsavel = 'ADM' | 'CENTRAL' | 'NENHUM';
+type Responsavel = string;
 type CampoNovo = {
   nome: string;
   tipo: 'moeda' | 'percentual' | 'data' | 'horario';
@@ -23,8 +23,12 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
   };
 
   async function listar() {
-    const [grupos, campos, vinculos, regrasDesconto] = await Promise.all([
-      db.select().from(t.gruposDinamicos).orderBy(t.gruposDinamicos.nome),
+    const [gruposBanco, centrosCusto, campos, vinculos, regrasDesconto] = await Promise.all([
+      db.select({ id: t.gruposDinamicos.id, nome: t.gruposDinamicos.nome,
+        origem: t.gruposDinamicos.origem, responsavel: t.gruposDinamicos.responsavel,
+        centroCustoId: t.gruposDinamicos.centroCustoId, ativo: t.gruposDinamicos.ativo })
+        .from(t.gruposDinamicos).orderBy(t.gruposDinamicos.nome),
+      db.select().from(t.centrosCusto).orderBy(t.centrosCusto.nome),
       db.select().from(t.camposDinamicos).orderBy(t.camposDinamicos.ordemGlobal),
       db.select({ grupoId: t.vinculosGrupos.grupoId, vinculoId: t.vinculosGrupos.vinculoId })
         .from(t.vinculosGrupos),
@@ -34,7 +38,13 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
     for (const item of vinculos) {
       (funcionariosPorGrupo[item.grupoId] ??= []).push(item.vinculoId);
     }
-    return { grupos, campos, funcionariosPorGrupo, regrasDesconto };
+    const centrosPorId = new Map(centrosCusto.map(centro => [centro.id, centro.nome]));
+    const grupos = gruposBanco.map(grupo => ({ ...grupo,
+      responsavelNome: grupo.centroCustoId
+        ? centrosPorId.get(grupo.centroCustoId) ?? grupo.responsavel : 'NENHUM',
+      responsavel: grupo.centroCustoId ?? 'NENHUM',
+    }));
+    return { grupos, centrosCusto, campos, funcionariosPorGrupo, regrasDesconto };
   }
 
   async function listarBasesBeneficio(grupoId: string, ano: number, mes: number) {
@@ -335,8 +345,14 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
       if (!existente) return false;
       if (existente.origem === 'BENEFICIO' && dados.responsavel !== 'NENHUM')
         throw new Error('Benefícios não têm responsável ADM/CENTRAL.');
+      const centro = dados.responsavel === 'NENHUM' ? null : (await tx.select()
+        .from(t.centrosCusto).where(and(eq(t.centrosCusto.id, dados.responsavel),
+          eq(t.centrosCusto.ativo, true))).limit(1))[0];
+      if (dados.responsavel !== 'NENHUM' && !centro)
+        throw new Error('Selecione um centro de custo ativo.');
       const [grupo] = await tx.update(t.gruposDinamicos).set({
-        nome: dados.nome.trim(), responsavel: dados.responsavel,
+        nome: dados.nome.trim(), responsavel: centro?.nome ?? 'NENHUM',
+        centroCustoId: centro?.id ?? null,
       }).where(eq(t.gruposDinamicos.id, id)).returning({ id: t.gruposDinamicos.id });
       if (!grupo) return false;
       await tx.insert(t.auditoria).values({
@@ -356,6 +372,12 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
       if (!grupo) return false;
       if (grupo.origem === 'BENEFICIO' && dados.responsavel !== 'NENHUM')
         throw new Error('Benefícios não têm responsável ADM/CENTRAL.');
+
+      const centro = dados.responsavel === 'NENHUM' ? null : (await tx.select()
+        .from(t.centrosCusto).where(and(eq(t.centrosCusto.id, dados.responsavel),
+          eq(t.centrosCusto.ativo, true))).limit(1))[0];
+      if (dados.responsavel !== 'NENHUM' && !centro)
+        throw new Error('Selecione um centro de custo ativo.');
 
       const existentes = await tx.select().from(t.camposDinamicos)
         .where(eq(t.camposDinamicos.grupoId, id));
@@ -406,9 +428,11 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
         }
       }
 
-      const grupoMudou = grupo.nome !== dados.nome.trim() || grupo.responsavel !== dados.responsavel;
+      const centroCustoId = centro?.id ?? null;
+      const grupoMudou = grupo.nome !== dados.nome.trim() ||
+        grupo.centroCustoId !== centroCustoId || grupo.responsavel !== (centro?.nome ?? 'NENHUM');
       if (grupoMudou) await tx.update(t.gruposDinamicos).set({
-        nome: dados.nome.trim(), responsavel: dados.responsavel,
+        nome: dados.nome.trim(), responsavel: centro?.nome ?? 'NENHUM', centroCustoId,
       }).where(eq(t.gruposDinamicos.id, id));
       for (const campo of camposAlterados) {
         await tx.update(t.camposDinamicos).set({
@@ -526,8 +550,14 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
   async function criarGrupo(nome: string, origem: Origem,
     responsavel: Responsavel, autor: string) {
     return db.transaction(async tx => {
+      const centro = responsavel === 'NENHUM' ? null : (await tx.select()
+        .from(t.centrosCusto).where(and(eq(t.centrosCusto.id, responsavel),
+          eq(t.centrosCusto.ativo, true))).limit(1))[0];
+      if (responsavel !== 'NENHUM' && !centro)
+        throw new Error('Selecione um centro de custo ativo.');
       const [g] = await tx.insert(t.gruposDinamicos)
-        .values({ nome, origem, responsavel }).returning({ id: t.gruposDinamicos.id });
+        .values({ nome, origem, responsavel: centro?.nome ?? 'NENHUM',
+          centroCustoId: centro?.id ?? null }).returning({ id: t.gruposDinamicos.id });
       await tx.insert(t.auditoria).values({
         usuarioId: autor, entidade: 'GRUPO', entidadeId: g.id, acao: 'CRIADO',
       });
@@ -547,6 +577,11 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
     autor: string,
   ) {
     return db.transaction(async tx => {
+      const centro = dados.responsavel === 'NENHUM' ? null : (await tx.select()
+        .from(t.centrosCusto).where(and(eq(t.centrosCusto.id, dados.responsavel),
+          eq(t.centrosCusto.ativo, true))).limit(1))[0];
+      if (dados.responsavel !== 'NENHUM' && !centro)
+        throw new Error('Selecione um centro de custo ativo.');
       if (dados.descontoBeneficio) {
         const regra = dados.descontoBeneficio;
         if (dados.origem !== 'BENEFICIO' || dados.campo.tipo !== 'moeda')
@@ -569,7 +604,8 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
         throw new Error('Há funcionários que não estão cadastrados no sistema.');
 
       const [grupo] = await tx.insert(t.gruposDinamicos).values({
-        nome: dados.nome, origem: dados.origem, responsavel: dados.responsavel,
+        nome: dados.nome, origem: dados.origem,
+        responsavel: centro?.nome ?? 'NENHUM', centroCustoId: centro?.id ?? null,
       }).returning({ id: t.gruposDinamicos.id });
       const [campo] = await tx.insert(t.camposDinamicos).values({
         grupoId: grupo.id, nome: dados.campo.nome,
@@ -608,7 +644,7 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
         if (dados.origem === 'COMISSAO') {
           await tx.insert(t.enviosComissoes).values({
             competenciaId: competencia.id, grupoId: grupo.id,
-            responsavel: dados.responsavel,
+            responsavel: centro?.nome ?? 'NENHUM', centroCustoId: centro?.id ?? null,
           }).onConflictDoNothing();
         }
         // Um funcionário cadastrado pode ser vinculado ao grupo mesmo que não
@@ -659,6 +695,7 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
         if (g.origem === 'COMISSAO')
           await tx.insert(t.enviosComissoes).values({
             competenciaId: competencia.id, grupoId, responsavel: g.responsavel,
+            centroCustoId: g.centroCustoId,
           }).onConflictDoNothing();
         if (ids.size) {
           const presentes = await tx.select({ id: t.funcionariosCompetencia.vinculoId })
@@ -692,9 +729,38 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
       return true;
     });
   }
+
+  async function listarCentrosCusto() {
+    return db.select().from(t.centrosCusto).orderBy(t.centrosCusto.nome);
+  }
+
+  async function criarCentroCusto(nome: string, autor: string) {
+    return db.transaction(async tx => {
+      const [centro] = await tx.insert(t.centrosCusto).values({ nome: nome.trim() })
+        .returning({ id: t.centrosCusto.id, nome: t.centrosCusto.nome,
+          ativo: t.centrosCusto.ativo });
+      await tx.insert(t.auditoria).values({ usuarioId: autor, entidade: 'CENTRO_CUSTO',
+        entidadeId: centro.id, acao: 'CRIADO', detalhes: { nome: centro.nome } });
+      return centro;
+    });
+  }
+
+  async function editarCentroCusto(id: string, nome: string, ativo: boolean, autor: string) {
+    return db.transaction(async tx => {
+      const [centro] = await tx.update(t.centrosCusto).set({ nome: nome.trim(), ativo })
+        .where(eq(t.centrosCusto.id, id)).returning({ id: t.centrosCusto.id,
+          nome: t.centrosCusto.nome });
+      if (!centro) return false;
+      await tx.update(t.gruposDinamicos).set({ responsavel: centro.nome })
+        .where(eq(t.gruposDinamicos.centroCustoId, centro.id));
+      await tx.insert(t.auditoria).values({ usuarioId: autor, entidade: 'CENTRO_CUSTO',
+        entidadeId: centro.id, acao: 'EDITADO', detalhes: { nome: centro.nome, ativo } });
+      return true;
+    });
+  }
   return { listar, criarGrupo, criarCompleto, criarCampo, ativarCampo, editarGrupo,
     editarGrupoCompleto, ativarGrupo,
     editarCampo, removerVinculoFuncionario,
     listarBasesBeneficio, salvarBasesBeneficio, salvarRegraDescontoBeneficio,
-    vincularFuncionariosGrupo };
+    vincularFuncionariosGrupo, listarCentrosCusto, criarCentroCusto, editarCentroCusto };
 }

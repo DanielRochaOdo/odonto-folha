@@ -1,14 +1,15 @@
 import type {
   CampoDinamico, Competencia, Funcionario, Lancamento, Perfil,
-  ResponsavelComissao, VinculoCampo,
+  VinculoCampo,
 } from '@odontofolha/contracts';
 import { gerarConsolidacao } from './consolidacao';
 import { podeEditarConsolidacao, podePreencherComissao } from './permissoes';
 
-export type AtorFolha = { id: string; perfil: Perfil };
+export type AtorFolha = { id: string; perfil: Perfil; centrosCustoIds?: string[] };
 export type EnvioComissao = {
   grupoId: string;
-  responsavel: ResponsavelComissao;
+  responsavel: string;
+  centroCustoId: string | null;
   concluido: boolean;
   concluidoEm: string | null;
   concluidoPor: string | null;
@@ -32,7 +33,9 @@ export type EstadoCompetencia = {
   revisao: number;
   auditoria: EventoAuditoria[];
 };
-export type CampoResponsavel = { grupoId: string; responsavel: ResponsavelComissao };
+export type CampoResponsavel = {
+  grupoId: string; responsavel: string; centroCustoId: string | null;
+};
 export type OpcaoLancamento = {
   funcionarioId: string;
   campoId: string;
@@ -102,7 +105,8 @@ export function abrirCompetencia(dados: {
     vinculos: dados.vinculos.filter(v => idsFuncionario.has(v.funcionarioId) && idsCampo.has(v.campoId)),
     lancamentos: [], camposBloqueados: [], envios: dados.gruposComissao
       .filter(g => colunas.some(c => c.origem === 'COMISSAO' && c.grupoId === g.grupoId))
-      .map(g => ({ grupoId: g.grupoId, responsavel: g.responsavel, concluido: false,
+      .map(g => ({ grupoId: g.grupoId, responsavel: g.responsavel,
+        centroCustoId: g.centroCustoId, concluido: false,
         concluidoEm: null, concluidoPor: null })),
     fechadaEm: null, fechadaPor: null, fechadaComPendencias: false,
     revisao: 0, auditoria: [],
@@ -199,7 +203,8 @@ export function salvarLancamento(
   } else {
     const envio = estado.envios.find(e => e.grupoId === campo.grupoId);
     if (!envio) throw new Error('Responsável da comissão não configurado');
-    if (!podePreencherComissao(ator.perfil, envio.responsavel, envio.concluido, associado))
+    if (!podePreencherComissao(ator.perfil, ator.centrosCustoIds ?? [], envio.centroCustoId,
+      envio.concluido, associado))
       throw new Error('Comissão bloqueada ou fora do escopo do perfil');
   }
   if (estado.camposBloqueados.includes(campo.id) && !podeEditarConsolidacao(ator.perfil))
@@ -225,14 +230,14 @@ export function salvarLancamento(
     avisos };
 }
 
-/** Salva o mesmo valor em vÃ¡rios funcionÃ¡rios como uma Ãºnica revisÃ£o lÃ³gica. */
+/** Salva o mesmo valor em vários funcionários como uma única revisão lógica. */
 export function salvarLancamentosEmMassa(
   estado: EstadoCompetencia,
   opcao: Omit<OpcaoLancamento, 'funcionarioId'> & { funcionariosIds: string[] },
   ator: AtorFolha,
 ): ResultadoEdicao {
   const ids = [...new Set(opcao.funcionariosIds)];
-  if (!ids.length) throw new Error('Selecione pelo menos um funcionÃ¡rio');
+  if (!ids.length) throw new Error('Selecione pelo menos um funcionário');
   let atual = estado;
   const avisos: string[] = [];
   for (const funcionarioId of ids) {
@@ -276,9 +281,10 @@ export function limparLancamentos(
 }
 function validarGrupo(estado: EstadoCompetencia, grupoId: string, ator: AtorFolha): EnvioComissao {
   const envio = estado.envios.find(e => e.grupoId === grupoId);
-  if (!envio || envio.responsavel === 'NENHUM')
+  if (!envio || !envio.centroCustoId)
     throw new Error('Esta comissão não utiliza conclusão de envio');
-  if (!podeEditarConsolidacao(ator.perfil) && ator.perfil !== envio.responsavel)
+  if (!podeEditarConsolidacao(ator.perfil) &&
+    !ator.centrosCustoIds?.includes(envio.centroCustoId))
     throw new Error('Perfil não autorizado para a comissão');
   return envio;
 }

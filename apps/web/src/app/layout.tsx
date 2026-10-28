@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Sora } from 'next/font/google';
+import CapturaTextoMaiusculo from './CapturaTextoMaiusculo';
 import './globals.css';
 
 const sora = Sora({
@@ -13,5 +14,7 @@ export const metadata: Metadata = {
   description: 'Sistema interno de competências, benefícios, comissões e consolidação.',
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="pt-BR" className={sora.variable}><body>{children}</body></html>;
+  return <html lang="pt-BR" className={sora.variable}><body>
+    <CapturaTextoMaiusculo>{children}</CapturaTextoMaiusculo>
+  </body></html>;
 }

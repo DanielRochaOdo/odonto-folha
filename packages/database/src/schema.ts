@@ -16,6 +16,12 @@ export const setores = pgTable('setores', {
   nome: text('nome').notNull().unique(),
   ativo: boolean('ativo').notNull().default(true),
 });
+export const centrosCusto = pgTable('centros_custo', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  nome: text('nome').notNull().unique(),
+  ativo: boolean('ativo').notNull().default(true),
+  criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+});
 export const pessoas = pgTable('pessoas', {
   id: uuid('id').defaultRandom().primaryKey(),
   cpf: varchar('cpf', { length: 11 }).notNull().unique(),
@@ -77,7 +83,8 @@ export const gruposDinamicos = pgTable('grupos_dinamicos', {
   id: uuid('id').defaultRandom().primaryKey(),
   nome: text('nome').notNull(),
   origem: text('origem', { enum: ['BENEFICIO', 'COMISSAO'] }).notNull(),
-  responsavel: text('responsavel', { enum: ['ADM', 'CENTRAL', 'NENHUM'] }).notNull().default('NENHUM'),
+  responsavel: text('responsavel').notNull().default('NENHUM'),
+  centroCustoId: uuid('centro_custo_id').references(() => centrosCusto.id),
   ativo: boolean('ativo').notNull().default(true),
 });
 /**
@@ -187,16 +194,18 @@ export const percentuaisDescontoBeneficio = pgTable('percentuais_desconto_benefi
 export const enviosComissoes = pgTable('envios_comissoes', {
   competenciaId: uuid('competencia_id').notNull().references(() => competencias.id),
   grupoId: uuid('grupo_id').notNull().references(() => gruposDinamicos.id),
-  responsavel: text('responsavel', { enum: ['ADM', 'CENTRAL', 'NENHUM'] }).notNull(),
+  responsavel: text('responsavel').notNull(),
+  centroCustoId: uuid('centro_custo_id').references(() => centrosCusto.id),
   concluido: boolean('concluido').notNull().default(false),
   concluidoEm: timestamp('concluido_em', { withTimezone: true }),
   concluidoPor: text('concluido_por'),
 }, t => [primaryKey({ columns: [t.competenciaId, t.grupoId] })]);
 export const usuariosPerfis = pgTable('usuarios_perfis', {
   usuarioId: text('usuario_id').primaryKey(),
-  perfil: text('perfil', { enum: ['ADMIN', 'DP', 'ADM', 'CENTRAL'] }).notNull(),
+  perfil: text('perfil', { enum: ['ADMIN', 'DP', 'CENTRO_CUSTO'] }).notNull(),
+  centroCustoId: uuid('centro_custo_id').references(() => centrosCusto.id),
   ativo: boolean('ativo').notNull().default(true),
-});
+}, t => [index('usuarios_perfis_centro_idx').on(t.centroCustoId)]);
 export const usuariosEmpresas = pgTable('usuarios_empresas', {
   usuarioId: text('usuario_id').notNull().references(() => usuariosPerfis.usuarioId),
   empresaId: uuid('empresa_id').notNull().references(() => empresas.id),

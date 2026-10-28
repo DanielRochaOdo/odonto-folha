@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import {
   ArrowDownTrayIcon,
   ArrowLeftIcon,
@@ -11,6 +11,7 @@ import {
   CalendarDaysIcon,
   ChevronDoubleLeftIcon,
   Cog6ToothIcon,
+  EyeIcon,
   PencilSquareIcon,
   RectangleGroupIcon,
   UserGroupIcon,
@@ -23,8 +24,8 @@ import { formatarData } from './datas';
 import { atualizarMascaraComCursor, formatarCpf, mascaraFinal,
   numeroDaMascara, prepararMascaraParaEdicao } from './mascaras';
 
-type Perfil = 'ADMIN' | 'DP' | 'ADM' | 'CENTRAL';
-type Sessao = { usuarioId: string; perfil: Perfil };
+type Perfil = 'ADMIN' | 'DP' | 'CENTRO_CUSTO';
+type Sessao = { usuarioId: string; perfil: Perfil; centrosCustoIds: string[] };
 type CompetenciaResumo = { id: string; ano: number; mes: number; revisao: number;
   criadaEm?: string; fechadaEm: string | null; fechadaComPendencias: boolean };
 type PendenciaFechamento = { responsavel: string; quantidade: number;
@@ -63,7 +64,7 @@ type Consolidacao = {
   fechadaPor: string | null;
   fechadaComPendencias: boolean;
   envios: {
-    grupoId: string; responsavel: 'ADM' | 'CENTRAL' | 'NENHUM';
+    grupoId: string; responsavel: string; centroCustoId: string | null;
     concluido: boolean; concluidoEm: string | null; concluidoPor: string | null;
   }[];
   colunas: CampoDinamico[];
@@ -121,6 +122,10 @@ export default function PaginaInicial() {
   const [consolidado, setConsolidado] = useState<Consolidacao | null>(null);
   const [aberta, setAberta] = useState<string>(new Date().toISOString().slice(0, 7));
   const [novoMes, setNovoMes] = useState(false);
+  const [criandoCompetencia, setCriandoCompetencia] = useState(false);
+  const criandoCompetenciaRef = useRef(false);
+  const [abrindoCompetenciaId, setAbrindoCompetenciaId] = useState<string | null>(null);
+  const abrindoCompetenciaRef = useRef(false);
   const [editando, setEditando] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -130,10 +135,12 @@ export default function PaginaInicial() {
   const [valorMassa, setValorMassa] = useState('');
   const [buscaFuncionarioConsolidacao, setBuscaFuncionarioConsolidacao] = useState('');
   const [empresaFiltroId, setEmpresaFiltroId] = useState<string | null>(null);
+  const [empresaResumoId, setEmpresaResumoId] = useState<string | null>(null);
   const [paginaConsolidacao, setPaginaConsolidacao] = useState(1);
   const [modalFechamento, setModalFechamento] = useState<{
     revisao: number; pendencias: PendenciaFechamento[];
   } | null>(null);
+  const competenciaSelecionadaResumo = competencias.find(c => c.id === competenciaSelecionada);
   const termoFuncionarioConsolidacao = buscaFuncionarioConsolidacao.trim().toLocaleLowerCase('pt-BR');
   const linhasConsolidacaoFiltradas = consolidado?.abas
     .filter(empresa => !empresaFiltroId || empresa.empresaContratanteId === empresaFiltroId)
@@ -147,6 +154,36 @@ export default function PaginaInicial() {
   const inicioPaginaConsolidacao = (paginaConsolidacaoAtual - 1) * ITENS_POR_PAGINA;
   const linhasConsolidacaoPagina = linhasConsolidacaoFiltradas.slice(
     inicioPaginaConsolidacao, inicioPaginaConsolidacao + ITENS_POR_PAGINA);
+  const empresaResumo = consolidado?.abas.find(empresa =>
+    empresa.empresaContratanteId === empresaResumoId) ??
+    (empresaResumoId === '__TODAS__' && consolidado ? {
+      empresaContratanteId: '__TODAS__',
+      funcionarios: consolidado.abas.flatMap(empresa => empresa.funcionarios),
+      totalAritmetico: consolidado.abas.reduce((total, empresa) => total + empresa.totalAritmetico, 0),
+      totalSalarios: consolidado.abas.reduce((total, empresa) => total + empresa.totalSalarios, 0),
+      parcial: consolidado.abas.some(empresa => empresa.parcial),
+    } : undefined);
+  const linhasResumoEmpresa = empresaResumo && consolidado
+    ? consolidado.colunas.filter(campo => campo.tipo === 'moeda').map(campo => {
+      const camposDoGrupo = consolidado.colunas.filter(item =>
+        item.grupoId === campo.grupoId && item.tipo === 'moeda');
+      const valor = empresaResumo.funcionarios.reduce((total, linha) => {
+        const celula = linha.celulas[campo.id];
+        if (celula?.situacao !== 'preenchido') return total;
+        return total + (typeof celula.valor === 'number'
+          ? celula.valor : Number(celula.valor) || 0);
+      }, 0);
+      return {
+        campoId: campo.id,
+        nome: camposDoGrupo.length === 1 ? campo.grupoNome : `${campo.grupoNome} · ${campo.nome}`,
+        valor,
+        classificacao: campo.classificacao,
+      };
+    })
+    : [];
+  const totalResumoEmpresa = linhasResumoEmpresa.reduce((total, linha) => {
+    return total + (linha.classificacao === 'desconto' ? -linha.valor : linha.valor);
+  }, 0);
 
   function salvarNavegacao(abaAtual: AbaNavegacao, competenciaId = competenciaSelecionada) {
     try {
@@ -164,6 +201,10 @@ export default function PaginaInicial() {
       void atualizarConsolidacao(competenciaSelecionada).catch(e =>
         setErro(e instanceof Error ? e.message : 'Não foi possível atualizar a consolidação'));
     }
+  }
+
+  async function atualizarModuloPrincipal() {
+    if (competenciaSelecionada) await atualizarConsolidacao(competenciaSelecionada);
   }
 
   function idsSelecionadosAplicaveis(campoId: string) {
@@ -214,11 +255,12 @@ export default function PaginaInicial() {
     return () => controle.abort();
   }, []);
 
-  async function carregarCompetencias() {
+  async function carregarCompetencias(): Promise<CompetenciaResumo[]> {
     const resposta = await fetch('/api/competencias', { cache: 'no-store', credentials: 'include' });
     if (!resposta.ok) throw new Error(await lerErro(resposta));
     const corpo = await resposta.json() as { competencias: CompetenciaResumo[] };
     setCompetencias(corpo.competencias);
+    return corpo.competencias;
   }
 
   useEffect(() => {
@@ -259,7 +301,10 @@ export default function PaginaInicial() {
         throw new Error(mensagem);
       }
       const atual = await fetch('/api/sessao', { cache: 'no-store', credentials: 'include' });
-      if (!atual.ok) throw new Error('Sua conta não possui perfil ativo. Consulte o ADMIN.');
+      if (atual.status === 401)
+        throw new Error('A API recusou a sessão (HTTP 401). Confirme o perfil ativo e se o login usa a mesma base de dados da API.');
+      if (!atual.ok)
+        throw new Error(`A API não conseguiu validar o perfil (HTTP ${atual.status}). Verifique a API e as migrations do banco.`);
       setSessao(await atual.json() as Sessao);
       setSenha(''); setFase('autenticado');
     } catch (e) {
@@ -286,34 +331,86 @@ export default function PaginaInicial() {
     }
   }
 
-  async function abrirCompetencia(id: string) {
-    setErro(''); setFeedback('');
-    setEmpresaFiltroId(null); setPaginaConsolidacao(1);
+  async function abrirCompetencia(id: string): Promise<boolean> {
+    if (abrindoCompetenciaRef.current) return false;
+    abrindoCompetenciaRef.current = true;
+    setAbrindoCompetenciaId(id);
+    setErro('');
+    const competencia = competencias.find(item => item.id === id);
+    setFeedback(competencia
+      ? `Abrindo a competência de ${nomeMes(competencia.ano, competencia.mes)}. Aguarde o carregamento dos dados.`
+      : 'Abrindo competência. Aguarde o carregamento dos dados.');
     setEmpresaFiltroId(null);
-    const resposta = await fetch('/api/competencias/' + encodeURIComponent(id) + '/consolidacao',
-      { cache: 'no-store', credentials: 'include' });
-    if (!resposta.ok) {
-      setErro(await lerErro(resposta));
-      return;
+    setPaginaConsolidacao(1);
+    try {
+      const resposta = await fetch('/api/competencias/' + encodeURIComponent(id) + '/consolidacao',
+        { cache: 'no-store', credentials: 'include' });
+      if (!resposta.ok) throw new Error(await lerErro(resposta));
+      setConsolidado(await resposta.json() as Consolidacao);
+      setCompetenciaSelecionada(id); setEditando(null); setAba('Consolidação');
+      salvarNavegacao('Consolidação', id);
+      setFeedback('');
+      return true;
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível abrir a competência.');
+      setFeedback('');
+      return false;
+    } finally {
+      abrindoCompetenciaRef.current = false;
+      setAbrindoCompetenciaId(null);
     }
-    setConsolidado(await resposta.json() as Consolidacao);
-    setCompetenciaSelecionada(id); setEditando(null); setAba('Consolidação');
-    salvarNavegacao('Consolidação', id);
   }
 
   async function criarCompetencia(evento: FormEvent<HTMLFormElement>) {
-    evento.preventDefault(); setErro(''); setFeedback('');
+    evento.preventDefault();
+    if (criandoCompetenciaRef.current) return;
+    criandoCompetenciaRef.current = true;
+    setCriandoCompetencia(true);
+    setErro('');
+    setFeedback('Criando competência e preparando os dados. Aguarde; esta etapa pode levar alguns instantes.');
     const [ano, mesNumero] = aberta.split('-').map(Number);
-    const resposta = await fetch('/api/competencias', {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ano, mes: mesNumero }),
-    });
-    if (!resposta.ok) { setErro(await lerErro(resposta)); return; }
-    const nova = await resposta.json() as CompetenciaResumo;
-    setNovoMes(false);
-    await carregarCompetencias();
-    await abrirCompetencia(nova.id);
+    try {
+      const resposta = await fetch('/api/competencias', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ano, mes: mesNumero }),
+      });
+      if (!resposta.ok) {
+        if (resposta.status === 409) {
+          const atualizadas = await carregarCompetencias();
+          const existente = atualizadas.find(item => item.ano === ano && item.mes === mesNumero);
+          if (existente) {
+            setNovoMes(false);
+            if (!await abrirCompetencia(existente.id)) return;
+            setFeedback('Esta competência já estava criada. Abrimos os dados existentes.');
+            return;
+          }
+        }
+        throw new Error(await lerErro(resposta));
+      }
+      const nova = await resposta.json() as CompetenciaResumo;
+      setNovoMes(false);
+      await carregarCompetencias();
+      if (!await abrirCompetencia(nova.id)) return;
+      setFeedback(`Competência de ${nomeMes(nova.ano, nova.mes)} criada e aberta.`);
+    } catch (e) {
+      try {
+        const atualizadas = await carregarCompetencias();
+        const existente = atualizadas.find(item => item.ano === ano && item.mes === mesNumero);
+        if (existente) {
+          setNovoMes(false);
+          setErro('');
+          if (!await abrirCompetencia(existente.id)) return;
+          setFeedback(`A competência de ${nomeMes(ano, mesNumero)} já foi criada e está aberta.`);
+          return;
+        }
+      } catch { /* Mantém a falha original se não for possível confirmar a criação. */ }
+      setErro(e instanceof Error ? e.message : 'Não foi possível criar a competência.');
+      setFeedback('');
+    } finally {
+      criandoCompetenciaRef.current = false;
+      setCriandoCompetencia(false);
+    }
   }
 
   async function salvarCelula(linha: Linha, campo: CampoDinamico, entrada: string) {
@@ -345,15 +442,7 @@ export default function PaginaInicial() {
         campoOrigemId: campo.campoOrigemDesconto, percentual: valor,
         versaoEsperada: consolidado.versaoBeneficios };
     } else if (campo.origem === 'BENEFICIO') {
-      const escolha = window.prompt(
-        'Benefício recorrente: digite R para aplicar neste mês e nos próximos; M para exceção apenas neste mês. Cancelar não salva.',
-        'R',
-      );
-      if (escolha === null) return;
-      const acao = escolha.trim().toUpperCase() === 'R' ? 'base'
-        : escolha.trim().toUpperCase() === 'M' ? 'excecao' : null;
-      if (!acao) { setErro('Escolha R ou M para salvar o benefício.'); return; }
-      caminho = '/api/beneficios/' + encodeURIComponent(competenciaSelecionada) + '/' + acao;
+      caminho = '/api/beneficios/' + encodeURIComponent(competenciaSelecionada) + '/base';
       corpo = {
         funcionarioId: linha.funcionario.id, campoId: campo.id, valor,
         versaoEsperada: consolidado.versaoBeneficios,
@@ -384,26 +473,20 @@ export default function PaginaInicial() {
     if (!funcionariosAplicaveis.length || funcionariosAplicaveis.length !== selecionadosMassa.length) {
       setErro('Selecione apenas funcionarios vinculados ao campo escolhido.'); return;
     }
-    if (!valorMassa.trim()) { setErro('Informe o valor para aplicar aos funcionÃ¡rios selecionados.'); return; }
+    if (!valorMassa.trim()) { setErro('Informe o valor para aplicar aos funcionários selecionados.'); return; }
     const valor = campo.tipo === 'moeda' || campo.tipo === 'percentual'
       ? numeroApi(valorMassa) : valorMassa;
     if (typeof valor === 'number' && (!Number.isFinite(valor) ||
       (campo.tipo === 'moeda' && valor < 0))) {
-      setErro('Informe um valor numÃ©rico vÃ¡lido. Moeda nÃ£o pode ser negativa.'); return;
+      setErro('Informe um valor numérico válido. Moeda não pode ser negativa.'); return;
     }
     const linhasSelecionadas = consolidado.abas.flatMap(a => a.funcionarios)
       .filter(linha => selecionadosMassa.includes(linha.funcionario.id));
     if (linhasSelecionadas.some(linha => (linha.celulas[campo.id]?.quantidadeParcelas ?? 0) > 0) &&
-      !window.confirm('Alguns funcionÃ¡rios tÃªm parcelas neste campo. SubstituÃ­-las pelo mesmo valor total?')) return;
+      !window.confirm('Alguns funcionários têm parcelas neste campo. Substituí-las pelo mesmo valor total?')) return;
     setErro(''); setSalvando(true); setFeedback('Aplicando valor...');
     try {
       if (campo.origem === 'BENEFICIO') {
-        const escolha = window.prompt(
-          'BenefÃ­cio: digite R para aplicar como base recorrente ou M para exceÃ§Ã£o apenas neste mÃªs.', 'R');
-        if (escolha === null) { setFeedback(''); return; }
-        const acao = escolha.trim().toUpperCase() === 'R' ? 'base'
-          : escolha.trim().toUpperCase() === 'M' ? 'excecao' : null;
-        if (!acao) { setErro('Escolha R ou M para salvar o benefÃ­cio.'); setFeedback(''); return; }
         const respostaCatalogo = await fetch('/api/beneficios/catalogo',
           { cache: 'no-store', credentials: 'include' });
         if (!respostaCatalogo.ok) throw new Error(await lerErro(respostaCatalogo));
@@ -412,7 +495,7 @@ export default function PaginaInicial() {
           '/valores-em-massa', {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ funcionariosIds: funcionariosAplicaveis, campoId: campo.id,
-            valor, acao, versaoEsperada: catalogo.versao }),
+            valor, acao: 'base', versaoEsperada: catalogo.versao }),
         });
         if (!resposta.ok) throw new Error(await lerErro(resposta));
       } else {
@@ -425,11 +508,11 @@ export default function PaginaInicial() {
         if (!resposta.ok) throw new Error(await lerErro(resposta));
       }
       await atualizarConsolidacao(competenciaSelecionada);
-      setFeedback(`Valor aplicado a ${selecionadosMassa.length} funcionÃ¡rio(s).`);
+      setFeedback(`Valor aplicado a ${selecionadosMassa.length} funcionário(s).`);
       setSelecionadosMassa([]); setValorMassa('');
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'NÃ£o foi possÃ­vel aplicar os valores.');
-      setFeedback('AlteraÃ§Ã£o nÃ£o salva');
+      setErro(e instanceof Error ? e.message : 'Não foi possível aplicar os valores.');
+      setFeedback('Alteração não salva');
     } finally { setSalvando(false); }
   }
 
@@ -666,24 +749,37 @@ export default function PaginaInicial() {
         <div className={`conteudo-app${aba === 'Painel' ? ' modulo-competencias' : ''}`}>
           {erro && <p role="alert" className="erro alerta-app">{erro}</p>}
           {feedback && <p role="status" className="feedback">{feedback}</p>}
-          {aba === 'Configurações' ? <Configuracoes perfil={sessao!.perfil} /> : !permiteDp(sessao!.perfil) ? (
-            <PainelSetor perfil={sessao!.perfil as 'ADM' | 'CENTRAL'}/>
-          ) : aba === 'Cadastros' ? <Cadastros /> : aba === 'Configuração' ? <ConfigCampos /> : aba === 'Painel' ? (
+          {aba === 'Configurações' ? <Configuracoes perfil={sessao!.perfil}
+            aoSincronizarCadastro={atualizarModuloPrincipal} /> : !permiteDp(sessao!.perfil) ? (
+            <PainelSetor />
+          ) : aba === 'Cadastros' ? <Cadastros competenciaId={competenciaSelecionada}
+            competenciaVigencia={competenciaSelecionadaResumo
+              ? `${competenciaSelecionadaResumo.ano}-${String(competenciaSelecionadaResumo.mes).padStart(2, '0')}`
+              : null}
+            aoSincronizar={atualizarModuloPrincipal} /> : aba === 'Configuração' ? <ConfigCampos /> : aba === 'Painel' ? (
             <>
               <div className="titulo-secao">
                 <div><h2>Visão geral</h2><p>Selecione uma competência para consultar os registros.</p></div>
-                <button className="acao-principal" onClick={() => setNovoMes(!novoMes)}>
+                <button type="button" className="acao-principal" disabled={criandoCompetencia}
+                  onClick={() => setNovoMes(!novoMes)}>
                   {novoMes ? 'Cancelar' : '+ Nova competência'}
                 </button>
               </div>
               {novoMes && <form onSubmit={criarCompetencia} className="painel-app linha-criacao">
                 <label htmlFor="mes-abertura">Mês e ano</label>
-                <input id="mes-abertura" type="month" required value={aberta}
+                <input id="mes-abertura" type="month" required value={aberta} disabled={criandoCompetencia}
                   onChange={e => setAberta(e.target.value)} />
-                <button className="acao-principal" type="submit">Criar competência</button>
+                <button className="acao-principal" type="submit" disabled={criandoCompetencia}>
+                  {criandoCompetencia ? 'Criando competência...' : 'Criar competência'}
+                </button>
+                {criandoCompetencia && <p className="criando-competencia-status" role="status">
+                  Preparando funcionários, benefícios e comissões. Mantenha esta tela aberta.
+                </p>}
               </form>}
-              <div className="grade-competencias">
+              <div className="grade-competencias" aria-busy={abrindoCompetenciaId !== null}>
                 {competencias.map(c => <button key={c.id} className="cartao-competencia"
+                    disabled={abrindoCompetenciaId !== null || criandoCompetencia}
+                    aria-busy={abrindoCompetenciaId === c.id}
                     onClick={() => void abrirCompetencia(c.id)}>
                     <span className="tag-competencia">COMPETÊNCIA</span>
                     <strong>{nomeMes(c.ano, c.mes)}</strong>
@@ -693,7 +789,9 @@ export default function PaginaInicial() {
                       </span>
                       <small>Aberta em {dataAbertura(c.criadaEm)}</small>
                     </span>
-                    <small className="abrir-detalhes-competencia">Abrir detalhes</small>
+                    <small className="abrir-detalhes-competencia">
+                      {abrindoCompetenciaId === c.id ? 'Abrindo…' : 'Abrir detalhes'}
+                    </small>
                     <ArrowUpRightIcon className="seta-competencia" aria-hidden="true" />
                   </button>)}
               </div>
@@ -743,10 +841,10 @@ export default function PaginaInicial() {
                 {consolidado.abas.map(empresa => {
                   const selecionado = empresaFiltroId === empresa.empresaContratanteId;
                   const nomeEmpresa = consolidado.nomes.empresas[empresa.empresaContratanteId] ?? 'Não identificada';
-                  return <button type="button" className="cartao-total-empresa"
+                  return <article className="cartao-total-empresa" key={empresa.empresaContratanteId}>
+                    <button type="button" className="cartao-total-empresa-selecao"
                     aria-pressed={selecionado}
                     aria-label={`Filtrar funcionários da empresa ${nomeEmpresa}`}
-                    key={empresa.empresaContratanteId}
                     onClick={() => {
                       setEmpresaFiltroId(atual =>
                         atual === empresa.empresaContratanteId ? null : empresa.empresaContratanteId);
@@ -757,22 +855,38 @@ export default function PaginaInicial() {
                     <strong>{dinheiro(empresa.totalAritmetico)}</strong>
                     {empresa.parcial && <span className="selo-total-parcial">Parcial</span>}
                   </div>
-                  </button>;
+                    </button>
+                    <button type="button" className="botao-resumo-empresa"
+                      aria-label={`Ver resumo de benefícios e comissões de ${nomeEmpresa}`}
+                      title="Ver resumo da empresa"
+                      onClick={() => setEmpresaResumoId(empresa.empresaContratanteId)}>
+                      <EyeIcon aria-hidden="true" />
+                    </button>
+                  </article>;
                 })}
-                <button type="button" className="cartao-total-empresa cartao-total-geral"
-                  aria-pressed={!empresaFiltroId}
-                  aria-label={`Exibir todos os ${totalFuncionariosConsolidacao} funcionários`}
-                  onClick={() => {
-                    setEmpresaFiltroId(null);
-                    setPaginaConsolidacao(1);
-                  }}>
-                  <strong className="nome-total-empresa">Total ({totalFuncionariosConsolidacao})</strong>
-                  <div className="valor-total-empresa">
-                    <strong>{dinheiro(totalGeralConsolidacao)}</strong>
-                    {consolidado.abas.some(empresa => empresa.parcial) &&
-                      <span className="selo-total-parcial">Parcial</span>}
-                  </div>
-                </button>
+                <article className={'cartao-total-empresa cartao-total-geral' +
+                  (!empresaFiltroId ? ' selecionado' : '')}>
+                  <button type="button" className="cartao-total-empresa-selecao"
+                    aria-pressed={!empresaFiltroId}
+                    aria-label={`Exibir todos os ${totalFuncionariosConsolidacao} funcionários`}
+                    onClick={() => {
+                      setEmpresaFiltroId(null);
+                      setPaginaConsolidacao(1);
+                    }}>
+                    <strong className="nome-total-empresa">Total ({totalFuncionariosConsolidacao})</strong>
+                    <div className="valor-total-empresa">
+                      <strong>{dinheiro(totalGeralConsolidacao)}</strong>
+                      {consolidado.abas.some(empresa => empresa.parcial) &&
+                        <span className="selo-total-parcial">Parcial</span>}
+                    </div>
+                  </button>
+                  <button type="button" className="botao-resumo-empresa"
+                    aria-label="Ver resumo de benefícios e comissões de todas as empresas"
+                    title="Ver resumo de todas as empresas"
+                    onClick={() => setEmpresaResumoId('__TODAS__')}>
+                    <EyeIcon aria-hidden="true" />
+                  </button>
+                </article>
               </section>
               {empresaFiltroId && <p className="filtro-empresa-ativo" role="status">
                 Exibindo {linhasConsolidacaoFiltradas.length} funcionário(s) de{' '}
@@ -1002,6 +1116,50 @@ export default function PaginaInicial() {
         </div>
         <footer className="rodape-app">OdontoFolha · Grupo Odontoart · Uso interno e restrito</footer>
       </div>
+      {empresaResumo && consolidado && <div className="fechamento-sobreposicao"
+        onKeyDown={evento => {
+          if (evento.key === 'Escape') setEmpresaResumoId(null);
+        }}>
+        <section className="fechamento-modal resumo-empresa-modal" role="dialog" aria-modal="true"
+          aria-labelledby="titulo-modal-resumo-empresa" aria-describedby="descricao-modal-resumo-empresa">
+          <header>
+            <span className="sobre">{empresaResumoId === '__TODAS__' ? 'RESUMO GERAL' : 'RESUMO DA EMPRESA'}</span>
+            <h3 id="titulo-modal-resumo-empresa">
+              {empresaResumoId === '__TODAS__' ? 'Todas as empresas' :
+                consolidado.nomes.empresas[empresaResumo.empresaContratanteId] ?? 'Empresa não identificada'}
+            </h3>
+            <p id="descricao-modal-resumo-empresa">
+              {nomeMes(consolidado.competencia.ano, consolidado.competencia.mes)} ·{' '}
+              {empresaResumo.funcionarios.length} funcionário(s). Valores dos lançamentos{' '}
+              {empresaResumoId === '__TODAS__' ? 'de todas as empresas.' : 'desta empresa.'}
+            </p>
+          </header>
+          {linhasResumoEmpresa.some(linha => linha.classificacao === 'informativo') &&
+            <p className="resumo-empresa-info">
+              Valores informativos aparecem na lista e entram no total.
+            </p>}
+          <div className="resumo-empresa-lista">
+            {linhasResumoEmpresa.length === 0 ? <p>Nenhum benefício ou comissão nesta competência.</p> :
+              <>
+                {linhasResumoEmpresa.map(linha => <div className="resumo-empresa-linha" key={linha.campoId}>
+                  <span className="resumo-empresa-nome"><span>{linha.nome}</span>
+                    {linha.classificacao === 'informativo' &&
+                      <small className="resumo-empresa-selo-informativo">Informativo</small>}
+                  </span>
+                  <strong>{dinheiro(linha.valor)}</strong>
+                </div>)}
+                <div className="resumo-empresa-total">
+                  <strong>Total</strong>
+                  <strong>{dinheiro(totalResumoEmpresa)}</strong>
+                </div>
+              </>}
+          </div>
+          <div className="fechamento-acoes">
+            <button type="button" className="botao-secundario" autoFocus
+              onClick={() => setEmpresaResumoId(null)}>Fechar</button>
+          </div>
+        </section>
+      </div>}
       {modalFechamento && <div className="fechamento-sobreposicao"
         onKeyDown={evento => {
           if (evento.key === 'Escape' && !salvando) setModalFechamento(null);

@@ -92,7 +92,7 @@ export function criarRepositorioPostgres(
       funcionarios, campos, vinculos: vinculosDaCompetencia, lancamentos: registros,
       camposBloqueados: colunas.filter(c => c.bloqueado).map(c => c.id),
       envios: envios.map(e => ({
-        grupoId: e.grupoId, responsavel: e.responsavel,
+        grupoId: e.grupoId, responsavel: e.responsavel, centroCustoId: e.centroCustoId,
         concluido: e.concluido, concluidoEm: e.concluidoEm?.toISOString() ?? null,
         concluidoPor: e.concluidoPor,
       })),
@@ -162,6 +162,7 @@ export function criarRepositorioPostgres(
       for (const envio of estado.envios) {
         await tx.insert(t.enviosComissoes).values({
           competenciaId: id, grupoId: envio.grupoId, responsavel: envio.responsavel,
+          centroCustoId: envio.centroCustoId,
           concluido: envio.concluido,
           concluidoEm: envio.concluidoEm ? new Date(envio.concluidoEm) : null,
           concluidoPor: envio.concluidoPor,
@@ -278,7 +279,7 @@ export function criarRepositorioPostgres(
       if (!nova) return null;
 
       const atual = ano * 12 + mes;
-      const [vinculosAtivos, movimentos, camposAtivos, grupos, meses] = await Promise.all([
+      const [vinculosAtivos, movimentos, camposAtivos, grupos, meses, basesBeneficio] = await Promise.all([
         tx.select({
           vinculo: t.vinculosEmpregaticios,
           pessoa: t.pessoas,
@@ -291,10 +292,15 @@ export function criarRepositorioPostgres(
             desc(t.movimentacoesVinculo.criadoEm)),
         tx.select().from(t.camposDinamicos)
           .where(eq(t.camposDinamicos.ativo, true)),
-        tx.select().from(t.gruposDinamicos)
+        tx.select({ id: t.gruposDinamicos.id, nome: t.gruposDinamicos.nome,
+          origem: t.gruposDinamicos.origem, responsavel: t.gruposDinamicos.responsavel,
+          centroCustoId: t.gruposDinamicos.centroCustoId, centroCustoNome: t.centrosCusto.nome })
+          .from(t.gruposDinamicos)
+          .leftJoin(t.centrosCusto, eq(t.gruposDinamicos.centroCustoId, t.centrosCusto.id))
           .where(eq(t.gruposDinamicos.ativo, true)),
         tx.select().from(t.competencias)
           .orderBy(desc(t.competencias.ano), desc(t.competencias.mes)),
+        tx.select().from(t.basesBeneficio),
       ]);
       const contratos = vinculosAtivos.filter(({ vinculo }) =>
         Number(vinculo.admissao.slice(0, 4)) * 12 +
@@ -315,6 +321,7 @@ export function criarRepositorioPostgres(
       const grupoPorId = new Map(grupos.map(g => [g.id, g]));
       const campos = camposAtivos.filter(c => grupoPorId.has(c.grupoId) &&
         c.anoCriacao * 12 + c.mesCriacao <= atual);
+      const camposPorId = new Map(campos.map(campo => [campo.id, campo]));
       for (const campo of campos) {
         await tx.insert(t.camposCompetencia).values({
           competenciaId: nova.id, campoId: campo.id,
@@ -323,6 +330,9 @@ export function criarRepositorioPostgres(
       }
       const camposIds = new Set(campos.map(c => c.id));
       const funcionariosIds = new Set(contratos.map(v => v.vinculo.id));
+      const vinculosCampoIds = new Set<string>();
+      const chaveVinculoCampo = (vinculoId: string, campoId: string) =>
+        `${vinculoId}:${campoId}`;
       const anterior = meses.find(m => m.id !== nova.id &&
         m.ano * 12 + m.mes < atual);
       if (anterior) {
@@ -336,6 +346,7 @@ export function criarRepositorioPostgres(
             competenciaId: nova.id, vinculoId: vinculo.vinculoId,
             campoId: vinculo.campoId, ativo: true,
           });
+          vinculosCampoIds.add(chaveVinculoCampo(vinculo.vinculoId, vinculo.campoId));
         }
       }
       // O vínculo permanente existe mesmo sem competências anteriores. Ao abrir
@@ -356,7 +367,42 @@ export function criarRepositorioPostgres(
           await tx.insert(t.vinculosCamposCompetencia).values({
             competenciaId: nova.id, vinculoId, campoId: campo.id, ativo: true,
           }).onConflictDoNothing();
+          vinculosCampoIds.add(chaveVinculoCampo(vinculoId, campo.id));
         }
+      }
+
+      // Registra na competência a versão recorrente vigente no momento da abertura.
+      const basesVigentes = new Map<string, typeof basesBeneficio[number]>();
+      for (const base of basesBeneficio) {
+        const campo = camposPorId.get(base.campoId);
+        const chave = chaveVinculoCampo(base.vinculoId, base.campoId);
+        if (!campo || grupoPorId.get(campo.grupoId)?.origem !== 'BENEFICIO' ||
+          !funcionariosIds.has(base.vinculoId) || !vinculosCampoIds.has(chave) ||
+          base.anoInicio * 12 + base.mesInicio > atual) continue;
+        const anterior = basesVigentes.get(chave);
+        if (!anterior || base.anoInicio * 12 + base.mesInicio >
+          anterior.anoInicio * 12 + anterior.mesInicio ||
+          (base.anoInicio === anterior.anoInicio && base.mesInicio === anterior.mesInicio &&
+            base.criadoEm > anterior.criadoEm)) basesVigentes.set(chave, base);
+      }
+      if (basesVigentes.size) {
+        const basesParaCopiar = [...basesVigentes.values()];
+        const celulas = await tx.insert(t.celulasCompetencia).values(basesParaCopiar.map(base => ({
+          competenciaId: nova.id, vinculoId: base.vinculoId, campoId: base.campoId,
+          modo: 'total' as const,
+        }))).returning({ id: t.celulasCompetencia.id,
+          vinculoId: t.celulasCompetencia.vinculoId, campoId: t.celulasCompetencia.campoId });
+        const basePorChave = new Map(basesParaCopiar.map(base =>
+          [chaveVinculoCampo(base.vinculoId, base.campoId), base]));
+        await tx.insert(t.lancamentosCompetencia).values(celulas.map(celula => {
+          const base = basePorChave.get(chaveVinculoCampo(celula.vinculoId, celula.campoId));
+          if (!base) throw new Error('Base de benefício não encontrada para a competência');
+          return {
+            celulaId: celula.id, modo: 'total' as const,
+            valorNumerico: base.valorNumerico, valorTextual: base.valorTextual,
+            vigente: true, autorId,
+          };
+        }));
       }
 
       const gruposComissao = new Set(campos.flatMap(c =>
@@ -366,7 +412,8 @@ export function criarRepositorioPostgres(
         if (!grupo) continue;
         await tx.insert(t.enviosComissoes).values({
           competenciaId: nova.id, grupoId,
-          responsavel: grupo.responsavel,
+          responsavel: grupo.centroCustoNome ?? 'NENHUM',
+          centroCustoId: grupo.centroCustoId,
           concluido: false, concluidoEm: null, concluidoPor: null,
         });
       }

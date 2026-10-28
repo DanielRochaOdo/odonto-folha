@@ -5,9 +5,10 @@ import type { criarConfiguracaoPostgres } from '../repositorios/configuracao-pos
 
 type Configuracao = ReturnType<typeof criarConfiguracaoPostgres>;
 const uuid = z.uuid(), nome = z.string().trim().min(1).max(160);
+const responsavel = z.union([uuid, z.literal('NENHUM')]);
 const grupoSchema = z.object({
   nome, origem: z.enum(['BENEFICIO', 'COMISSAO']),
-  responsavel: z.enum(['ADM', 'CENTRAL', 'NENHUM']),
+  responsavel,
 }).strict();
 const campoSchema = z.object({
   grupoId: uuid, nome,
@@ -17,7 +18,7 @@ const campoSchema = z.object({
   mes: z.number().int().min(1).max(12),
 }).strict();
 const statusSchema = z.object({ ativo: z.boolean() }).strict();
-const grupoEdicaoSchema = z.object({ nome, responsavel: z.enum(['ADM', 'CENTRAL', 'NENHUM']) }).strict();
+const grupoEdicaoSchema = z.object({ nome, responsavel }).strict();
 const competenciaMes = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)
   .refine(valor => Number(valor.slice(0, 4)) >= 2000 && Number(valor.slice(0, 4)) <= 2200);
 const basesBeneficioSchema = z.object({
@@ -45,7 +46,7 @@ const vinculosBeneficioSchema = z.object({
 
 const criacaoCompletaSchema = z.object({
   nome, origem: z.enum(['BENEFICIO', 'COMISSAO']),
-  responsavel: z.enum(['ADM', 'CENTRAL', 'NENHUM']),
+  responsavel,
   campo: z.object({
     nome,
     tipo: z.enum(['moeda', 'percentual', 'data', 'horario']),
@@ -62,7 +63,7 @@ const criacaoCompletaSchema = z.object({
   funcionariosIds: z.array(uuid).max(10000),
 }).strict();
 const grupoEdicaoCompletaSchema = z.object({
-  nome, responsavel: z.enum(['ADM', 'CENTRAL', 'NENHUM']),
+  nome, responsavel,
   campos: z.array(campoSchema.omit({ grupoId: true }).extend({ id: uuid, ativo: z.boolean() }))
     .max(500),
   funcionariosIds: z.array(uuid).max(10000),
@@ -85,6 +86,40 @@ export function criarRotasConfiguracao(
 
   app.get('/configuracao/campos', async c =>
     c.json(await deps.configuracao.listar()));
+
+  app.get('/configuracao/centros-custo', async c =>
+    c.json({ centrosCusto: await deps.configuracao.listarCentrosCusto() }));
+
+  app.post('/configuracao/centros-custo', async c => {
+    const body = z.object({ nome }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ erro: 'Informe o nome do centro de custo.' }, 400);
+    try {
+      return c.json(await deps.configuracao.criarCentroCusto(body.data.nome,
+        c.get('sessao').usuarioId), 201);
+    } catch (e) {
+      return c.json({ erro: e instanceof Error && /duplicate|unique/i.test(e.message)
+        ? 'Já existe um centro de custo com esse nome.'
+        : 'Não foi possível criar o centro de custo.' }, 400);
+    }
+  });
+
+  app.patch('/configuracao/centros-custo/:id', async c => {
+    const id = uuid.safeParse(c.req.param('id'));
+    const body = z.object({ nome, ativo: z.boolean() }).strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!id.success || !body.success)
+      return c.json({ erro: 'Confira o centro de custo.' }, 400);
+    try {
+      const atualizado = await deps.configuracao.editarCentroCusto(id.data,
+        body.data.nome, body.data.ativo, c.get('sessao').usuarioId);
+      return atualizado ? c.json({ sucesso: true })
+        : c.json({ erro: 'Centro de custo não encontrado.' }, 404);
+    } catch (e) {
+      return c.json({ erro: e instanceof Error && /duplicate|unique/i.test(e.message)
+        ? 'Já existe um centro de custo com esse nome.'
+        : 'Não foi possível atualizar o centro de custo.' }, 400);
+    }
+  });
 
   app.get('/configuracao/grupos/:id/bases-beneficios', async c => {
     const id = uuid.safeParse(c.req.param('id'));

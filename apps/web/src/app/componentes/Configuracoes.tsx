@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
+import EstruturaOrganizacional from './EstruturaOrganizacional';
+import CentrosCusto from './CentrosCusto';
 import Usuarios from './Usuarios';
 
 type DadosAuth = { user?: { email?: string } } | null;
@@ -19,8 +21,11 @@ async function mensagemResposta(resposta: Response): Promise<string> {
   return 'Não foi possível concluir a alteração.';
 }
 
-export default function Configuracoes({ perfil }: { perfil: 'ADMIN' | 'DP' | 'ADM' | 'CENTRAL' }) {
-  const [aba, setAba] = useState<'Meus Dados' | 'Usuários'>('Meus Dados');
+export default function Configuracoes({ perfil, aoSincronizarCadastro }: {
+  perfil: 'ADMIN' | 'DP' | 'CENTRO_CUSTO'; aoSincronizarCadastro: () => Promise<void>;
+}) {
+  const [aba, setAba] = useState<'meus-dados' | 'usuarios' | 'estrutura-organizacional' |
+    'centros-custo'>('meus-dados');
   const [emailAtual, setEmailAtual] = useState('');
   const [novoEmail, setNovoEmail] = useState('');
   const [confirmarEmail, setConfirmarEmail] = useState('');
@@ -105,16 +110,24 @@ export default function Configuracoes({ perfil }: { perfil: 'ADMIN' | 'DP' | 'AD
 
   return <section className="painel-app configuracoes-conta">
     <div className="abas-configuracao" role="tablist" aria-label="Abas de configurações">
-      <button type="button" id="aba-meus-dados" role="tab" aria-selected={aba === 'Meus Dados'}
+      <button type="button" id="aba-meus-dados" role="tab" aria-selected={aba === 'meus-dados'}
         aria-controls="painel-meus-dados"
-        className={'aba-configuracao' + (aba === 'Meus Dados' ? ' selecionada' : '')}
-        onClick={() => setAba('Meus Dados')}>Meus Dados</button>
-      {perfil === 'ADMIN' && <button type="button" id="aba-usuarios" role="tab"
-        aria-selected={aba === 'Usuários'} aria-controls="painel-usuarios"
-        className={'aba-configuracao' + (aba === 'Usuários' ? ' selecionada' : '')}
-        onClick={() => setAba('Usuários')}>Usuários</button>}
+        className={'aba-configuracao' + (aba === 'meus-dados' ? ' selecionada' : '')}
+        onClick={() => setAba('meus-dados')}>Meus Dados</button>
+      {(perfil === 'ADMIN' || perfil === 'DP') && <button type="button" id="aba-usuarios" role="tab"
+        aria-selected={aba === 'usuarios'} aria-controls="painel-usuarios"
+        className={'aba-configuracao' + (aba === 'usuarios' ? ' selecionada' : '')}
+        onClick={() => setAba('usuarios')}>Usuários</button>}
+      {(perfil === 'ADMIN' || perfil === 'DP') && <button type="button" id="aba-estrutura" role="tab"
+        aria-selected={aba === 'estrutura-organizacional'} aria-controls="painel-estrutura"
+        className={'aba-configuracao' + (aba === 'estrutura-organizacional' ? ' selecionada' : '')}
+        onClick={() => setAba('estrutura-organizacional')}>Estrutura organizacional</button>}
+      {(perfil === 'ADMIN' || perfil === 'DP') && <button type="button" id="aba-centros-custo" role="tab"
+        aria-selected={aba === 'centros-custo'} aria-controls="painel-centros-custo"
+        className={'aba-configuracao' + (aba === 'centros-custo' ? ' selecionada' : '')}
+        onClick={() => setAba('centros-custo')}>Centros de custo</button>}
     </div>
-    {aba === 'Meus Dados' ? <div id="painel-meus-dados" role="tabpanel"
+    {aba === 'meus-dados' ? <div id="painel-meus-dados" role="tabpanel"
       aria-labelledby="aba-meus-dados" className="painel-configuracao">
       {erro && <p className="erro" role="alert">{erro}</p>}
       {aviso && <p className="feedback" role="status">{aviso}</p>}
@@ -171,7 +184,11 @@ export default function Configuracoes({ perfil }: { perfil: 'ADMIN' | 'DP' | 'AD
           </button>
         </form>
       </section>
-    </div> : <div id="painel-usuarios" role="tabpanel" aria-labelledby="aba-usuarios"
-      className="painel-configuracao"><Usuarios /></div>}
+    </div> : aba === 'usuarios' ? <div id="painel-usuarios" role="tabpanel"
+      aria-labelledby="aba-usuarios" className="painel-configuracao"><Usuarios /></div>
+      : aba === 'estrutura-organizacional' ? <EstruturaOrganizacional aoSincronizar={aoSincronizarCadastro} />
+        : aba === 'centros-custo' ? <div id="painel-centros-custo" role="tabpanel"
+          aria-labelledby="aba-centros-custo" className="painel-configuracao"><CentrosCusto /></div>
+          : null}
   </section>;
 }

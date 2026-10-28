@@ -122,15 +122,15 @@ describe('permissões por perfil de usuário', () => {
   it('reserva cadastros e consolidação ao DP e ADMIN', () => {
     expect(podeGerenciarCadastros('DP')).toBe(true);
     expect(podeEditarConsolidacao('ADMIN')).toBe(true);
-    expect(podeGerenciarCadastros('ADM')).toBe(false);
-    expect(podeEditarConsolidacao('CENTRAL')).toBe(false);
+    expect(podeGerenciarCadastros('CENTRO_CUSTO')).toBe(false);
+    expect(podeEditarConsolidacao('CENTRO_CUSTO')).toBe(false);
   });
 
   it('bloqueia setor sem vínculo, responsável ou comissão reaberta', () => {
-    expect(podePreencherComissao('ADM', 'ADM', false, true)).toBe(true);
-    expect(podePreencherComissao('ADM', 'CENTRAL', false, true)).toBe(false);
-    expect(podePreencherComissao('ADM', 'ADM', true, true)).toBe(false);
-    expect(podePreencherComissao('CENTRAL', 'CENTRAL', false, false)).toBe(false);
-    expect(podePreencherComissao('DP', 'NENHUM', true, true)).toBe(true);
+    expect(podePreencherComissao('CENTRO_CUSTO', ['adm'], 'adm', false, true)).toBe(true);
+    expect(podePreencherComissao('CENTRO_CUSTO', ['adm'], 'central', false, true)).toBe(false);
+    expect(podePreencherComissao('CENTRO_CUSTO', ['adm'], 'adm', true, true)).toBe(false);
+    expect(podePreencherComissao('CENTRO_CUSTO', ['central'], 'central', false, false)).toBe(false);
+    expect(podePreencherComissao('DP', [], null, true, true)).toBe(true);
   });
 });

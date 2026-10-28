@@ -16,9 +16,9 @@ export function criarRotasSetor(
       const estado = await deps.buscarCompetencia(item.id);
       if (!estado) continue;
       const grupos = estado.envios
-        .filter(e => e.responsavel === sessao.perfil || sessao.perfil === 'ADMIN' ||
-          sessao.perfil === 'DP')
-        .filter(e => e.responsavel !== 'NENHUM')
+        .filter(e => (sessao.perfil === 'ADMIN' || sessao.perfil === 'DP') ||
+          Boolean(e.centroCustoId && sessao.centrosCustoIds.includes(e.centroCustoId)))
+        .filter(e => e.centroCustoId !== null)
         .map(e => ({
           id: e.grupoId,
           nome: estado.campos.find(campo => campo.grupoId === e.grupoId)?.grupoNome ?? 'Comissão',

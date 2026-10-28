@@ -21,7 +21,7 @@ async function json<T>(url:string,options?:RequestInit):Promise<T>{
 }
 const post=<T,>(url:string,body:object)=>json<T>(url,{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-export default function PainelSetor({perfil}:{perfil:'ADM'|'CENTRAL'}){
+export default function PainelSetor(){
  const [meses,setMeses]=useState<Mes[]>([]);
  const [mesId,setMesId]=useState('');
  const [grupoId,setGrupoId]=useState('');
@@ -84,7 +84,7 @@ export default function PainelSetor({perfil}:{perfil:'ADM'|'CENTRAL'}){
  }
  const mes=meses.find(m=>m.id===mesId);
  return <section className="area-setor">
-  <div className="titulo-secao"><div><h2>Comissões do setor {perfil}</h2>
+  <div className="titulo-secao"><div><h2>Comissões do seu centro de custo</h2>
    <p>Somente comissões atribuídas ao seu setor. Os lançamentos são compartilhados com DP.</p></div></div>
   {erro&&<p role="alert" className="erro">{erro}</p>}
   {aviso&&<p role="status" className="feedback">{aviso}</p>}

@@ -128,7 +128,7 @@
 .config-edicao-secao p{font-size:11px;margin:0;color:var(--suave)}
 .config-edicao-secao-topo{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
 .config-edicao-secao-topo>span{color:var(--suave);font-size:11px;white-space:nowrap}
-.config-edicao-campos-lista{display:grid;gap:10px;max-height:360px;overflow:auto;padding:2px}
+.config-edicao-campos-lista{display:grid;gap:10px;overflow:visible;padding:2px}
 .config-edicao-campo{min-width:0;margin:0;padding:14px;border:1px solid var(--linha);border-radius:11px;
   background:color-mix(in srgb,var(--fundo) 76%,transparent)}
 .config-edicao-campo legend{max-width:90%;padding:0 6px;color:var(--texto);font-size:12px;font-weight:750;
@@ -347,16 +347,31 @@ select:disabled{opacity:.62;cursor:not-allowed}
   padding:0 14px;white-space:nowrap}
 .totais-empresa{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
   gap:10px;margin:0 0 14px}
-.cartao-total-empresa{min-width:0;padding:12px 14px;border:1px solid var(--linha);
+.cartao-total-empresa{min-width:0;padding:5px 7px 5px 14px;border:1px solid var(--linha);
   border-radius:12px;background:color-mix(in srgb,var(--superficie) 88%,transparent);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.07);text-align:left;color:var(--texto);
-  font:inherit;cursor:pointer;transition:border-color .16s ease,background-color .16s ease,
+  font:inherit;display:flex;align-items:stretch;gap:4px;
+  transition:border-color .16s ease,background-color .16s ease,
   box-shadow .16s ease}
 .cartao-total-empresa:hover{border-color:color-mix(in srgb,var(--verde) 45%,var(--linha))}
+.cartao-total-empresa-selecao{display:flex;flex:1;min-width:0;flex-direction:column;justify-content:center;
+  align-items:stretch;padding:6px 4px;border:0;border-radius:8px;background:transparent;
+  color:inherit;text-align:left;font:inherit;cursor:pointer}
+.cartao-total-empresa-selecao[aria-pressed="true"]{background:color-mix(in srgb,var(--verde) 11%,var(--superficie));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--verde) 22%,transparent)}
+.botao-resumo-empresa{width:36px;min-width:36px;align-self:center;padding:8px;border:1px solid var(--linha);
+  border-radius:9px;background:color-mix(in srgb,var(--superficie) 90%,transparent);color:var(--suave);
+  cursor:pointer;transition:color .15s,border-color .15s,background-color .15s}
+.botao-resumo-empresa:hover{color:var(--verde);border-color:var(--verde)}
+.botao-resumo-empresa svg{width:18px;height:18px}
+.cartao-total-empresa-selecao:focus-visible,.botao-resumo-empresa:focus-visible{outline:3px solid var(--foco);outline-offset:2px}
 .cartao-total-empresa[aria-pressed="true"]{border-color:var(--verde);
   background:color-mix(in srgb,var(--verde) 11%,var(--superficie));
   box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--verde) 22%,transparent)}
-.cartao-total-empresa:focus-visible{outline:3px solid var(--foco);outline-offset:2px}
+.cartao-total-geral.selecionado{border-color:var(--verde);
+  background:color-mix(in srgb,var(--verde) 11%,var(--superficie));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--verde) 22%,transparent)}
+.criando-competencia-status{flex-basis:100%;margin:0;color:var(--foco);font-size:12px;font-weight:700}
 .nome-total-empresa{display:block;overflow:hidden;margin:0 0 10px;color:var(--texto);
   font-size:13px;text-overflow:ellipsis;white-space:nowrap}
 .valor-total-empresa{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -392,7 +407,7 @@ select:disabled{opacity:.62;cursor:not-allowed}
 .dado-salario-funcionario dd{margin:0;font-weight:700}
 .consolidacao-painel .tabela-principal td.celula-dinamica{vertical-align:middle}
 .consolidacao-painel .tabela-principal thead th{text-align:center;vertical-align:middle}
-.consolidacao-painel button:not(.cartao-total-empresa){display:inline-flex;align-items:center;justify-content:center;
+.consolidacao-painel button:not(.cartao-total-empresa):not(.cartao-total-empresa-selecao):not(.botao-resumo-empresa){display:inline-flex;align-items:center;justify-content:center;
   height:40px;min-height:40px;padding:0 14px}
 .consolidacao-painel .orientacao-tabela{margin:8px 0 12px;font-size:11px}
 .paginacao-consolidacao{display:flex;align-items:center;justify-content:space-between;gap:12px;
@@ -535,10 +550,23 @@ select:disabled{opacity:.62;cursor:not-allowed}
   padding-top:17px;border-top:1px solid var(--linha)}
 .competencia-fechada-aviso{padding:12px 15px;margin:0 0 16px;border:1px solid var(--linha);
   border-radius:10px;background:var(--fundo);color:var(--texto);font-size:13px}
+.resumo-empresa-modal{width:min(100%,720px)}
+.resumo-empresa-info{margin:16px 0 -8px;padding:10px 12px;border:1px solid var(--linha);border-radius:9px;
+  color:var(--suave);font-size:12px}
+.resumo-empresa-lista{display:grid;gap:0;margin:20px 0;max-height:min(55dvh,520px);overflow:auto}
+.resumo-empresa-linha,.resumo-empresa-total{display:flex;justify-content:space-between;align-items:center;
+  gap:16px;padding:12px 4px;border-bottom:1px solid var(--linha);font-size:13px}
+.resumo-empresa-nome{display:flex;min-width:0;align-items:center;gap:8px;color:var(--texto)}
+.resumo-empresa-nome>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.resumo-empresa-selo-informativo{flex:none;padding:3px 7px;border-radius:999px;
+  background:color-mix(in srgb,var(--verde) 12%,var(--superficie));color:var(--suave);font-size:10px}
+.resumo-empresa-linha>strong,.resumo-empresa-total>strong:last-child{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.resumo-empresa-total{margin-top:4px;border-bottom:0;font-size:15px;font-weight:700}
 @media(max-width:600px){
   .fechamento-modal{padding:20px}
   .fechamento-acoes{display:grid;grid-template-columns:1fr}
   .fechamento-acoes button{width:100%}
+  .resumo-empresa-linha,.resumo-empresa-total{padding:11px 2px}
 }
 @media(prefers-reduced-transparency:reduce){
   .fechamento-sobreposicao{-webkit-backdrop-filter:none;backdrop-filter:none}
@@ -769,14 +797,23 @@ select:disabled{opacity:.62;cursor:not-allowed}
 .config-desconto-beneficio{grid-column:1/-1;display:grid;gap:8px;margin:4px 0 0;padding:10px 12px;
   border:1px solid color-mix(in srgb,var(--linha) 78%,transparent);border-radius:12px;
   background:color-mix(in srgb,var(--superficie) 82%,transparent)}
-.config-campos-form .config-desconto-alternador{display:flex;flex-direction:row;align-items:center;gap:9px;
-  margin:0;cursor:pointer}
-.config-campos-form .config-desconto-alternador input{flex:0 0 16px;width:16px;height:16px;
+.config-desconto-beneficio .config-desconto-alternador{grid-column:1/-1;display:flex;flex-direction:row;
+  align-items:center;gap:9px;margin:0;cursor:pointer}
+.config-desconto-beneficio .config-desconto-alternador input{flex:0 0 16px;width:16px;height:16px;
   margin:0;padding:0;accent-color:var(--verde)}
 .config-desconto-alternador span{display:grid;gap:4px}
 .config-desconto-alternador small,.config-ajuda-bases{color:var(--suave);font-size:11px;line-height:1.55}
 .config-desconto-beneficio>.config-campos-form{grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr));
   gap:10px;margin-top:4px}
+.config-edicao-campo .config-desconto-edicao-campos{width:100%;min-width:0;
+  grid-template-columns:minmax(0,1.2fr) minmax(130px,.85fr) minmax(0,1.15fr);align-items:start}
+.config-edicao-campo .config-desconto-edicao-campos>label{display:grid;min-width:0;
+  grid-template-rows:40px auto;align-content:start;gap:8px}
+.config-edicao-campo .config-desconto-edicao-campos>label>span:first-child{align-self:end;line-height:1.25}
+.config-edicao-campo .config-desconto-edicao-campos>label>input,
+.config-edicao-campo .config-desconto-edicao-campos .config-desconto-percentual{width:100%;min-width:0}
+.config-edicao-campo .config-desconto-edicao-campos .config-desconto-percentual input{
+  flex:1;min-width:0;max-width:none}
 .config-desconto-beneficio>.config-campos-form .config-ajuda-bases{grid-column:1/-1;margin:0}
 .config-desconto-percentual{display:flex;align-items:center;gap:8px}
 .config-desconto-percentual input{max-width:150px}
@@ -784,6 +821,9 @@ select:disabled{opacity:.62;cursor:not-allowed}
 .config-percentual-desconto>span{color:var(--suave);font-size:12px}
 @media(max-width:600px){
   .config-desconto-beneficio>.config-campos-form{grid-template-columns:1fr}
+  .config-edicao-campo .config-desconto-edicao-campos{grid-template-columns:1fr}
+  .config-edicao-campo .config-desconto-edicao-campos>label{grid-template-rows:auto auto}
+  .config-edicao-campo .config-desconto-edicao-campos>label>span:first-child{align-self:auto}
 }
 @media(max-width:520px){
   .grade-cartoes-funcionarios{grid-template-columns:minmax(0,1fr)}
@@ -798,3 +838,81 @@ select:disabled{opacity:.62;cursor:not-allowed}
 .status-cartao-competencia.aberta{background:color-mix(in srgb,var(--verde) 16%,transparent);color:var(--verde)}
 .status-cartao-competencia.fechada{background:var(--fundo);color:var(--suave)}
 .cartao-competencia .abrir-detalhes-competencia{margin-top:-8px}
+.estrutura-organizacional{padding-top:22px}
+.estrutura-nota{margin:0 0 16px;padding:11px 13px;border:1px solid var(--linha);border-radius:9px;
+  background:color-mix(in srgb,var(--fundo) 78%,transparent);font-size:12px}
+.estrutura-grade{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.estrutura-grupo{min-width:0;padding:18px;border:1px solid var(--linha);border-radius:13px;
+  background:color-mix(in srgb,var(--superficie) 78%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.07);
+  -webkit-backdrop-filter:blur(12px) saturate(112%);backdrop-filter:blur(12px) saturate(112%)}
+.estrutura-grupo-topo{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}
+.estrutura-grupo-topo h3{margin:0 0 4px;font-size:17px}
+.estrutura-grupo-topo span{font-size:11px;color:var(--suave)}
+.estrutura-form-novo{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:9px;
+  padding-bottom:15px;border-bottom:1px solid var(--linha)}
+.estrutura-form-novo label{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:700}
+.estrutura-form-novo input,.estrutura-form-edicao input{width:100%;min-width:0;min-height:40px;padding:9px 11px;
+  border:1px solid var(--linha);border-radius:8px;background:var(--superficie);color:var(--texto);font:inherit}
+.estrutura-form-novo input:focus-visible,.estrutura-form-edicao input:focus-visible{
+  outline:0;border-color:var(--foco);box-shadow:0 0 0 3px color-mix(in srgb,var(--foco) 20%,transparent)}
+.estrutura-adicionar{display:flex;align-items:center;gap:6px;padding:10px 12px;white-space:nowrap}
+.estrutura-adicionar svg{width:16px;height:16px}
+.estrutura-lista{display:grid;gap:7px;margin:13px 0 0;padding:0;list-style:none}
+.estrutura-item{min-width:0;min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:7px 8px 7px 11px;border:1px solid color-mix(in srgb,var(--linha) 76%,transparent);
+  border-radius:9px;background:color-mix(in srgb,var(--fundo) 68%,transparent)}
+.estrutura-item-dados{min-width:0;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.estrutura-item-dados strong{min-width:0;overflow-wrap:anywhere;font-size:12px}
+.estrutura-status{padding:3px 7px;border-radius:999px;font-size:9px;font-weight:800}
+.estrutura-status.ativo{color:var(--verde);background:color-mix(in srgb,var(--verde) 14%,transparent)}
+.estrutura-status.inativo{color:var(--suave);background:color-mix(in srgb,var(--suave) 14%,transparent)}
+.estrutura-item-acoes{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.estrutura-item-acoes .perigo{color:#b44747}
+.estrutura-item-acoes .perigo:hover{color:#a33232;border-color:#d98282;background:#fff0ef}
+.estrutura-form-edicao{width:100%;display:grid;grid-template-columns:minmax(0,1fr) 32px 32px;align-items:center;gap:6px}
+.estrutura-vazia{margin:14px 0 0;font-size:12px}
+.texto-somente-leitor{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.cadastro-importacao-upload{display:flex;min-height:170px;align-items:center;justify-content:center;flex-direction:column;gap:8px;
+  margin:0;padding:22px 16px;border:2px dashed var(--linha);border-radius:12px;
+  background:color-mix(in srgb,var(--fundo) 72%,transparent);cursor:pointer;text-align:center;
+  transition:border-color .16s,background .16s,transform .16s}
+.cadastro-importacao-upload.arrastando{border-color:var(--verde);
+  background:color-mix(in srgb,var(--verde) 12%,var(--superficie));transform:scale(1.01)}
+.cadastro-importacao-upload:hover{border-color:var(--foco);background:color-mix(in srgb,var(--fundo) 56%,var(--superficie))}
+.cadastro-importacao-upload:focus-visible{outline:3px solid var(--foco);outline-offset:3px}
+.cadastro-importacao-upload svg{width:32px;height:32px;margin-bottom:3px;color:var(--verde)}
+.cadastro-importacao-upload strong{font-size:15px;font-weight:800}
+.cadastro-importacao-upload span{font-size:12px;color:var(--texto)}
+.cadastro-importacao-upload small{color:var(--suave);font-size:10px;line-height:1.5}
+.cadastro-importacao-legenda{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  margin:12px 0 16px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--foco) 34%,var(--linha));
+  border-radius:10px;background:color-mix(in srgb,var(--foco) 10%,var(--superficie))}
+.cadastro-importacao-dica{flex:1;margin:0;color:var(--foco);font-size:11px;font-weight:700;line-height:1.55}
+.cadastro-importacao-legenda button{flex:0 0 auto}
+.cadastro-importacao-resumo>p{margin:0 0 13px;font-size:13px;font-weight:700}
+.cadastro-importacao-lista{display:grid;gap:7px;max-height:52vh;overflow:auto;padding:2px}
+.cadastro-importacao-lista article{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:11px 12px;border:1px solid var(--linha);border-radius:9px;background:var(--fundo)}
+.cadastro-importacao-lista article>div{display:grid;gap:4px;min-width:0}
+.cadastro-importacao-lista strong{font-size:12px;overflow-wrap:anywhere}
+.cadastro-importacao-lista small,.cadastro-importacao-lista article>span{font-size:10px;color:var(--suave);line-height:1.45}
+.cadastro-importacao-lista article>span{text-align:right;max-width:48%;overflow-wrap:anywhere}
+.cadastro-importacao-lista article.sucesso{border-left:3px solid var(--verde)}
+.cadastro-importacao-lista article.falha{border-left:3px solid #c97968}
+@media(max-width:600px){.cadastro-importacao-upload{min-height:150px}
+  .cadastro-importacao-legenda{align-items:stretch;flex-direction:column}
+  .cadastro-importacao-legenda button{width:100%}
+  .cadastro-importacao-lista article{align-items:flex-start;flex-direction:column;gap:6px}
+  .cadastro-importacao-lista article>span{text-align:left;max-width:none}}
+@media(max-width:760px){.estrutura-grade{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:480px){.estrutura-form-novo{grid-template-columns:minmax(0,1fr)}
+  .estrutura-adicionar{justify-content:center;width:100%}}
+@media(prefers-reduced-transparency:reduce){.estrutura-grupo{background:var(--superficie);
+  -webkit-backdrop-filter:none;backdrop-filter:none}}
+
+.captura-texto-maiusculo input:not([type]),
+.captura-texto-maiusculo input[type="text"],
+.captura-texto-maiusculo input[type="search"],
+.captura-texto-maiusculo input[type="tel"],
+.captura-texto-maiusculo textarea{text-transform:uppercase}

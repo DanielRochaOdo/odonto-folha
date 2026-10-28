@@ -6,9 +6,11 @@ import { atualizarMascaraComCursor, mascaraFinal, numeroDaMascara,
   prepararMascaraParaEdicao } from '../mascaras';
 
 type Origem = 'BENEFICIO' | 'COMISSAO';
-type Responsavel = 'ADM' | 'CENTRAL' | 'NENHUM';
+type Responsavel = string;
+type CentroCusto = { id: string; nome: string; ativo: boolean };
 type Grupo = {
-  id: string; nome: string; origem: Origem; responsavel: Responsavel; ativo: boolean;
+  id: string; nome: string; origem: Origem; responsavel: Responsavel;
+  responsavelNome: string; centroCustoId: string | null; ativo: boolean;
 };
 type Campo = {
   id: string; grupoId: string; nome: string; tipo: string;
@@ -19,9 +21,10 @@ type RegraDesconto = { id: string; campoOrigemId: string; campoDescontoId: strin
   nomeColuna: string; percentualPadrao: string | number; anoInicio: number; mesInicio: number;
   ativo: boolean; criadoEm: string };
 type CampoEdicaoGrupo = Pick<Campo, 'id' | 'nome' | 'tipo' | 'classificacao' | 'ativo'> &
-  { vigencia: string };
+  { vigencia: string; descontoAutomatico: boolean; nomeColunaDesconto: string;
+    percentualDesconto: string; vigenciaDesconto: string; descontoConfigurado: boolean };
 type Dados = {
-  grupos: Grupo[]; campos: Campo[];
+  grupos: Grupo[]; centrosCusto: CentroCusto[]; campos: Campo[];
   funcionariosPorGrupo: Record<string, string[]>;
   regrasDesconto: RegraDesconto[];
 };
@@ -39,7 +42,7 @@ type BasesBeneficio = {
 type Passo = 1 | 2 | 3;
 
 const inicio: Dados = {
-  grupos: [], campos: [], funcionariosPorGrupo: {}, regrasDesconto: [],
+  grupos: [], centrosCusto: [], campos: [], funcionariosPorGrupo: {}, regrasDesconto: [],
 
 };
 const informacoes: Record<Origem, { titulo: string; singular: string; explicacao: string }> = {
@@ -55,9 +58,21 @@ const informacoes: Record<Origem, { titulo: string; singular: string; explicacao
   },
 };
 const nomePasso = ['Nome e identificação', 'Configuração do campo', 'Funcionários vinculados'];
-const mesAtual = () => new Date().toISOString().slice(0, 7);
+const mesAtual = () => {
+  const data = new Date();
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+};
 function mensagemErro(erro: unknown) {
   return erro instanceof Error ? erro.message : 'Não foi possível concluir a operação.';
+}
+
+function regraDescontoVigente(regras: RegraDesconto[], campoId: string, competencia = mesAtual()) {
+  const [ano, mes] = competencia.split('-').map(Number);
+  const numeroCompetencia = ano * 12 + mes;
+  return regras.filter(item => item.campoOrigemId === campoId &&
+    item.anoInicio * 12 + item.mesInicio <= numeroCompetencia)
+    .sort((a, b) => a.anoInicio * 12 + a.mesInicio - (b.anoInicio * 12 + b.mesInicio) ||
+      a.criadoEm.localeCompare(b.criadoEm)).at(-1);
 }
 
 async function lerResposta(resposta: Response) {
@@ -514,10 +529,19 @@ export default function ConfigCampos() {
     setNomeGrupoEditando(grupo.nome);
     setResponsavelGrupoEditando(grupo.responsavel);
     setCamposGrupoEditando(dados.campos.filter(campo => campo.grupoId === grupo.id)
-      .map(({ id, nome, tipo, classificacao, anoCriacao, mesCriacao, ativo }) => ({
-        id, nome, tipo, classificacao, ativo,
-        vigencia: `${anoCriacao}-${String(mesCriacao).padStart(2, '0')}`,
-      })));
+      .map(campo => {
+        const regra = regraDescontoVigente(dados.regrasDesconto, campo.id);
+        return {
+          id: campo.id, nome: campo.nome, tipo: campo.tipo, classificacao: campo.classificacao,
+          ativo: campo.ativo,
+          vigencia: `${campo.anoCriacao}-${String(campo.mesCriacao).padStart(2, '0')}`,
+          descontoAutomatico: regra?.ativo ?? false,
+          descontoConfigurado: regra?.ativo ?? false,
+          nomeColunaDesconto: regra?.nomeColuna ?? '',
+          percentualDesconto: String(regra?.percentualPadrao ?? 0),
+          vigenciaDesconto: mesAtual(),
+        };
+      }));
     setFuncionariosGrupoEditando(dados.funcionariosPorGrupo[grupo.id] ?? []);
     setBuscaFuncionariosGrupoEditando('');
     setErro('');
@@ -527,6 +551,20 @@ export default function ConfigCampos() {
   async function salvarEdicaoGrupo(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     if (!grupoEditando || ocupado) return;
+    if (grupoEditando.origem === 'BENEFICIO') {
+      for (const campo of camposGrupoEditando) {
+        if (!campo.descontoAutomatico || campo.tipo !== 'moeda') continue;
+        const [ano, mes] = campo.vigenciaDesconto.split('-').map(Number);
+        const percentual = Number(campo.percentualDesconto.replace(',', '.'));
+        const competenciaAtual = mesAtual();
+        if (!campo.nomeColunaDesconto.trim() || !ano || !mes || mes > 12 ||
+          ano * 12 + mes < Number(competenciaAtual.slice(0, 4)) * 12 + Number(competenciaAtual.slice(5, 7)) ||
+          !Number.isFinite(percentual) || percentual < 0 || percentual > 100) {
+          setErro('Informe o nome da coluna, uma competência atual ou futura e um percentual entre 0 e 100.');
+          return;
+        }
+      }
+    }
     setOcupado(true); setErro(''); setAviso('');
     try {
       await enviar('/api/configuracao/grupos/' + encodeURIComponent(grupoEditando.id) + '/editar-completo', {
@@ -539,6 +577,27 @@ export default function ConfigCampos() {
         }),
         funcionariosIds: funcionariosGrupoEditando,
       });
+      if (grupoEditando.origem === 'BENEFICIO') {
+        for (const campo of camposGrupoEditando) {
+          const regraAtual = regraDescontoVigente(dados.regrasDesconto, campo.id);
+          const ativo = campo.descontoAutomatico && campo.tipo === 'moeda';
+          const percentual = Number(campo.percentualDesconto.replace(',', '.'));
+          const nomeColuna = campo.nomeColunaDesconto.trim() ||
+            regraAtual?.nomeColuna || `Desconto ${campo.nome.trim()}`;
+          const regraAtiva = regraAtual?.ativo ?? false;
+          const precisaSalvar = ativo
+            ? !regraAtiva || nomeColuna !== regraAtual?.nomeColuna ||
+              percentual !== Number(regraAtual?.percentualPadrao)
+            : regraAtiva;
+          if (!precisaSalvar) continue;
+          await enviar('/api/configuracao/campos/' + encodeURIComponent(campo.id) +
+            '/desconto-beneficio', {
+            nomeColuna, percentualPadrao: Number.isFinite(percentual)
+              ? percentual : Number(regraAtual?.percentualPadrao ?? 0),
+            competencia: campo.vigenciaDesconto, ativo,
+          });
+        }
+      }
       setGrupoEditando(null);
       await carregar();
       setAviso('Cadastro, campos e funcionários vinculados atualizados.');
@@ -735,7 +794,7 @@ export default function ConfigCampos() {
                       setAviso('');
                     }}>
                       <span>{item.nome}</span>
-                      {item.origem === 'COMISSAO' && <small>{item.responsavel}</small>}
+                      {item.origem === 'COMISSAO' && <small>{item.responsavelNome}</small>}
                       <small>{dados.campos.filter(c => c.grupoId === item.id).length} campos</small>
                       <small>{(dados.funcionariosPorGrupo[item.id] ?? []).length} funcionários</small>
                       {!item.ativo && <small>Excluído</small>}
@@ -1201,8 +1260,8 @@ export default function ConfigCampos() {
                         <select id="wizard-responsavel" value={responsavel}
                           onChange={e => setResponsavel(e.target.value as Responsavel)}>
                           <option value="NENHUM">Sem responsável definido</option>
-                          <option value="ADM">Administrativo (ADM)</option>
-                          <option value="CENTRAL">Central</option>
+                          {dados.centrosCusto.filter(centro => centro.ativo).map(centro =>
+                            <option key={centro.id} value={centro.id}>{centro.nome}</option>)}
                         </select>
                       </label>
                     )}
@@ -1344,7 +1403,8 @@ export default function ConfigCampos() {
                   {grupoEditando.origem === 'COMISSAO' && <label htmlFor="editar-grupo-responsavel">Setor responsável
                     <select id="editar-grupo-responsavel" value={responsavelGrupoEditando}
                       onChange={evento => setResponsavelGrupoEditando(evento.target.value as Responsavel)}>
-                      <option value="ADM">ADM</option><option value="CENTRAL">Central</option>
+                      {dados.centrosCusto.filter(centro => centro.ativo).map(centro =>
+                        <option key={centro.id} value={centro.id}>{centro.nome}</option>)}
                     </select>
                   </label>}
                 </div>
@@ -1391,6 +1451,49 @@ export default function ConfigCampos() {
                           Campo ativo para novas competências
                         </label>
                       </div>
+                      {grupoEditando.origem === 'BENEFICIO' && campo.tipo === 'moeda' &&
+                        <fieldset className="config-desconto-beneficio">
+                          <legend>Desconto automático</legend>
+                          <label className="config-desconto-alternador">
+                            <input type="checkbox" checked={campo.descontoAutomatico}
+                              onChange={evento => setCamposGrupoEditando(atual => atual.map(item =>
+                                item.id === campo.id
+                                  ? { ...item, descontoAutomatico: evento.target.checked } : item))} />
+                            <span><strong>Gera desconto</strong>
+                              <small>Adicione ou remova o desconto automático deste benefício.</small></span>
+                          </label>
+                          {(campo.descontoAutomatico || campo.descontoConfigurado) &&
+                            <div className="config-campos-form config-desconto-edicao-campos">
+                              <label htmlFor={`editar-desconto-nome-${campo.id}`}>
+                                <span>Nome da coluna de desconto</span>
+                                <input id={`editar-desconto-nome-${campo.id}`} required maxLength={160}
+                                  value={campo.nomeColunaDesconto}
+                                  onChange={evento => setCamposGrupoEditando(atual => atual.map(item =>
+                                    item.id === campo.id
+                                      ? { ...item, nomeColunaDesconto: evento.target.value } : item))} />
+                              </label>
+                              <label htmlFor={`editar-desconto-percentual-${campo.id}`}>
+                                <span>Percentual padrão</span>
+                                <span className="config-desconto-percentual">
+                                  <input id={`editar-desconto-percentual-${campo.id}`} type="number"
+                                    min="0" max="100" step="0.01" required
+                                    value={campo.percentualDesconto}
+                                    onChange={evento => setCamposGrupoEditando(atual => atual.map(item =>
+                                      item.id === campo.id
+                                        ? { ...item, percentualDesconto: evento.target.value } : item))} />
+                                  <span>%</span>
+                                </span>
+                              </label>
+                              <label htmlFor={`editar-desconto-vigencia-${campo.id}`}>
+                                <span>Vigente a partir da competência</span>
+                                <input id={`editar-desconto-vigencia-${campo.id}`} type="month"
+                                  min={mesAtual()} required value={campo.vigenciaDesconto}
+                                  onChange={evento => setCamposGrupoEditando(atual => atual.map(item =>
+                                    item.id === campo.id
+                                      ? { ...item, vigenciaDesconto: evento.target.value } : item))} />
+                              </label>
+                            </div>}
+                        </fieldset>}
                     </fieldset>
                   ))}
                   {camposGrupoEditando.length === 0 && <p className="config-sem-vinculos">

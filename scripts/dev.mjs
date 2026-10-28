@@ -77,7 +77,7 @@ try {
     processoApi = iniciarProcesso('API',
       resolve(diretorioApi, 'node_modules/tsx/dist/cli.mjs'),
       ['watch', 'src/server.ts'], diretorioApi,
-      { ...process.env, PORT: apiPorta });
+      { ...process.env, NODE_ENV: 'development', PORT: apiPorta });
   }
 
   await aguardarApi(processoApi);
@@ -87,7 +87,7 @@ try {
     const diretorioWeb = resolve(raiz, 'apps/web');
     iniciarProcesso('Frontend',
       resolve(diretorioWeb, 'node_modules/next/dist/bin/next'),
-      ['dev', '-p', '3000'], diretorioWeb,
+      ['dev', '--hostname', '0.0.0.0', '-p', '3000'], diretorioWeb,
       { ...process.env, API_INTERNAL_URL: apiBase });
   }
 } catch (erro) {

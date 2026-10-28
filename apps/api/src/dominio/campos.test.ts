@@ -3,11 +3,11 @@ import { catalogoCamposVazio, criarGrupo, criarCampo, editarCampo,
   renomearGrupo, ativarGrupo, ativarCampo, camposParaNovaCompetencia } from './campos';
 
 const dp = { id: 'dp', perfil: 'DP' as const };
-const adm = { id: 'adm', perfil: 'ADM' as const };
+const adm = { id: 'adm', perfil: 'CENTRO_CUSTO' as const, centrosCustoIds: [] };
 const competencia = { ano: 2026, mes: 10 };
 function exemplo() {
   const b = criarGrupo(catalogoCamposVazio(), 'Transporte', 'BENEFICIO', 'NENHUM', dp, 0);
-  const c = criarGrupo(b, 'Atendimento', 'COMISSAO', 'ADM', dp, b.revisao);
+  const c = criarGrupo(b, 'Atendimento', 'COMISSAO', '00000000-0000-4000-8000-000000000001', dp, b.revisao);
   const bId = c.grupos[0].id, cId = c.grupos[1].id;
   const p = criarCampo(c, cId, { nome: 'Valor', tipo: 'moeda',
     classificacao: 'provento', criadoEm: competencia }, dp, c.revisao);

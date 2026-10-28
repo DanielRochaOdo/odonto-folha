@@ -5,19 +5,23 @@ import { z } from '@odontofolha/contracts';
 import type { ConexaoFolha } from '@odontofolha/database';
 import type { SessaoOperacional } from './operacionais';
 
-const perfilGerenciavel = z.enum(['DP', 'ADM', 'CENTRAL']);
+const perfilGerenciavel = z.enum(['DP', 'CENTRO_CUSTO']);
 const schemaNovoUsuario = z.object({
   nome: z.string().trim().min(2).max(160),
   email: z.string().trim().email().max(320),
   senha: z.string().min(6).max(128),
   perfil: perfilGerenciavel,
-}).strict();
+  centroCustoId: z.uuid().nullable(),
+}).strict().refine(dados => dados.perfil === 'DP' ? dados.centroCustoId === null
+  : dados.centroCustoId !== null, 'Selecione um centro de custo para este usuário.');
 const schemaAtualizarUsuario = z.object({
   nome: z.string().trim().min(2).max(160),
   email: z.string().trim().email().max(320),
   perfil: perfilGerenciavel,
+  centroCustoId: z.uuid().nullable(),
   ativo: z.boolean(),
-}).strict();
+}).strict().refine(dados => dados.perfil === 'DP' ? dados.centroCustoId === null
+  : dados.centroCustoId !== null, 'Selecione um centro de custo para este usuário.');
 const schemaRedefinirSenha = z.object({
   senha: z.string().min(6).max(128),
 }).strict();
@@ -47,26 +51,29 @@ async function registrarAuditoria(
   );
 }
 
-/** Gestão de contas de acesso, exclusiva do perfil ADMIN. */
+/** Gestão de contas de acesso pelos perfis ADMIN e DP. */
 export function criarRotasUsuarios(deps: DependenciasUsuarios) {
   const app = new Hono<{ Variables: { sessao: SessaoOperacional } }>().basePath('/api');
-  const exigirAdmin = async (
+  const exigirGestorUsuarios = async (
     c: Context<{ Variables: { sessao: SessaoOperacional } }>, proximo: Next,
   ) => {
     c.header('Cache-Control', 'no-store');
     const sessao = await deps.autenticar(c.req.raw.headers);
     if (!sessao) return c.json({ erro: 'Sessão necessária' }, 401);
-    if (sessao.perfil !== 'ADMIN') return c.json({ erro: 'Somente ADMIN pode gerenciar usuários.' }, 403);
+    if (sessao.perfil !== 'ADMIN' && sessao.perfil !== 'DP')
+      return c.json({ erro: 'Somente ADMIN ou DP pode gerenciar usuários.' }, 403);
     c.set('sessao', sessao);
     await proximo();
   };
-  app.use('/usuarios', exigirAdmin);
-  app.use('/usuarios/*', exigirAdmin);
+  app.use('/usuarios', exigirGestorUsuarios);
+  app.use('/usuarios/*', exigirGestorUsuarios);
 
   app.get('/usuarios', async c => {
     const resultado = await deps.pool.query(
-      `SELECT u.id, u.name AS nome, u.email, p.perfil, p.ativo
+      `SELECT u.id, u.name AS nome, u.email, p.perfil, p.ativo,
+         p.centro_custo_id AS "centroCustoId", cc.nome AS "centroCustoNome"
        FROM "user" u JOIN usuarios_perfis p ON p.usuario_id = u.id
+       LEFT JOIN centros_custo cc ON cc.id = p.centro_custo_id
        WHERE p.perfil <> 'ADMIN' ORDER BY lower(u.name), lower(u.email)`,
     );
     return c.json({ usuarios: resultado.rows });
@@ -83,6 +90,16 @@ export function criarRotasUsuarios(deps: DependenciasUsuarios) {
     const conexao = await deps.pool.connect();
     try {
       await conexao.query('BEGIN');
+      if (corpo.data.centroCustoId) {
+        const centro = await conexao.query(
+          'SELECT id FROM centros_custo WHERE id = $1 AND ativo = true',
+          [corpo.data.centroCustoId],
+        );
+        if (!centro.rows.length) {
+          await conexao.query('ROLLBACK');
+          return c.json({ erro: 'Selecione um centro de custo ativo.' }, 400);
+        }
+      }
       await conexao.query(
         `INSERT INTO "user" (id, name, email, "emailVerified", image, "createdAt", "updatedAt")
          VALUES ($1, $2, $3, false, NULL, now(), now())`,
@@ -94,8 +111,8 @@ export function criarRotasUsuarios(deps: DependenciasUsuarios) {
         [usuarioId, senhaHash],
       );
       await conexao.query(
-        'INSERT INTO usuarios_perfis (usuario_id, perfil, ativo) VALUES ($1, $2, true)',
-        [usuarioId, corpo.data.perfil],
+        'INSERT INTO usuarios_perfis (usuario_id, perfil, centro_custo_id, ativo) VALUES ($1, $2, $3, true)',
+        [usuarioId, corpo.data.perfil, corpo.data.centroCustoId],
       );
       const ator = c.get('sessao');
       await registrarAuditoria(conexao, ator.usuarioId, usuarioId, 'criou', {
@@ -120,6 +137,16 @@ export function criarRotasUsuarios(deps: DependenciasUsuarios) {
     const conexao = await deps.pool.connect();
     try {
       await conexao.query('BEGIN');
+      if (corpo.data.centroCustoId) {
+        const centro = await conexao.query(
+          'SELECT id FROM centros_custo WHERE id = $1 AND ativo = true',
+          [corpo.data.centroCustoId],
+        );
+        if (!centro.rows.length) {
+          await conexao.query('ROLLBACK');
+          return c.json({ erro: 'Selecione um centro de custo ativo.' }, 400);
+        }
+      }
       const atual = await conexao.query(
         `SELECT u.email, p.perfil FROM "user" u
          JOIN usuarios_perfis p ON p.usuario_id = u.id WHERE u.id = $1 FOR UPDATE OF u, p`,
@@ -146,8 +173,8 @@ export function criarRotasUsuarios(deps: DependenciasUsuarios) {
         [corpo.data.nome, email, usuarioId],
       );
       await conexao.query(
-        'UPDATE usuarios_perfis SET perfil = $1, ativo = $2 WHERE usuario_id = $3',
-        [corpo.data.perfil, corpo.data.ativo, usuarioId],
+        'UPDATE usuarios_perfis SET perfil = $1, centro_custo_id = $2, ativo = $3 WHERE usuario_id = $4',
+        [corpo.data.perfil, corpo.data.centroCustoId, corpo.data.ativo, usuarioId],
       );
       if (emailAlterado || !corpo.data.ativo)
         await conexao.query('DELETE FROM "session" WHERE "userId" = $1', [usuarioId]);

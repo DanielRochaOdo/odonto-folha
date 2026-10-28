@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 
-type PerfilUsuario = 'DP' | 'ADM' | 'CENTRAL';
-type Usuario = { id: string; nome: string; email: string; perfil: PerfilUsuario; ativo: boolean };
-type RascunhoUsuario = Omit<Usuario, 'id'>;
-const novoUsuarioVazio: RascunhoUsuario = { nome: '', email: '', perfil: 'DP', ativo: true };
+type PerfilUsuario = 'DP' | 'CENTRO_CUSTO';
+type CentroCusto = { id: string; nome: string; ativo: boolean };
+type Usuario = { id: string; nome: string; email: string; perfil: PerfilUsuario;
+  centroCustoId: string | null; centroCustoNome: string | null; ativo: boolean };
+type RascunhoUsuario = { nome: string; email: string; perfil: PerfilUsuario; centroCustoId: string | null };
+const novoUsuarioVazio: RascunhoUsuario = { nome: '', email: '', perfil: 'DP', centroCustoId: null };
 
 async function mensagemResposta(resposta: Response): Promise<string> {
   try {
@@ -25,8 +27,18 @@ async function buscarUsuarios(signal?: AbortSignal): Promise<Usuario[]> {
   return dados.usuarios;
 }
 
+async function buscarCentrosCusto(signal?: AbortSignal): Promise<CentroCusto[]> {
+  const resposta = await fetch('/api/configuracao/centros-custo', {
+    cache: 'no-store', credentials: 'include', signal,
+  });
+  if (!resposta.ok) throw new Error(await mensagemResposta(resposta));
+  const dados = await resposta.json() as { centrosCusto: CentroCusto[] };
+  return dados.centrosCusto;
+}
+
 export default function Usuarios() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [centrosCusto, setCentrosCusto] = useState<CentroCusto[]>([]);
   const [rascunho, setRascunho] = useState<RascunhoUsuario>(novoUsuarioVazio);
   const [senhaNova, setSenhaNova] = useState('');
   const [confirmacaoSenha, setConfirmacaoSenha] = useState('');
@@ -40,14 +52,15 @@ export default function Usuarios() {
   const dialogoRef = useRef<HTMLDialogElement>(null);
 
   const carregarUsuarios = useCallback(async (signal?: AbortSignal) => {
-    setUsuarios(await buscarUsuarios(signal));
+    const [lista, centros] = await Promise.all([buscarUsuarios(signal), buscarCentrosCusto(signal)]);
+    setUsuarios(lista); setCentrosCusto(centros);
   }, []);
 
   useEffect(() => {
     const controle = new AbortController();
-    void buscarUsuarios(controle.signal)
-      .then(lista => {
-        if (!controle.signal.aborted) setUsuarios(lista);
+    void Promise.all([buscarUsuarios(controle.signal), buscarCentrosCusto(controle.signal)])
+      .then(([lista, centros]) => {
+        if (!controle.signal.aborted) { setUsuarios(lista); setCentrosCusto(centros); }
       })
       .catch(e => {
         if (!controle.signal.aborted) setErro(e instanceof Error
@@ -99,7 +112,8 @@ export default function Usuarios() {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nome: rascunho.nome.trim(),
-          email: rascunho.email.trim(), perfil: rascunho.perfil, senha: senhaNova }),
+          email: rascunho.email.trim(), perfil: rascunho.perfil,
+          centroCustoId: rascunho.centroCustoId, senha: senhaNova }),
       });
       if (!resposta.ok) throw new Error(await mensagemResposta(resposta));
       fecharModal(); setAviso('Usuário criado. A senha não será exibida novamente.');
@@ -117,7 +131,7 @@ export default function Usuarios() {
         method: 'PATCH', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nome: usuario.nome, email: usuario.email,
-          perfil: usuario.perfil, ativo: usuario.ativo }),
+          perfil: usuario.perfil, centroCustoId: usuario.centroCustoId, ativo: usuario.ativo }),
       });
       if (!resposta.ok) throw new Error(await mensagemResposta(resposta));
       setAviso('Dados do usuário atualizados.');
@@ -159,19 +173,34 @@ export default function Usuarios() {
     {erro && !modal && <p className="erro" role="alert">{erro}</p>}
     {aviso && <p className="feedback" role="status">{aviso}</p>}
     {carregando ? <p className="config-vazio">Carregando usuários...</p> : !usuarios.length ? (
-      <p className="config-vazio">Nenhum usuário de DP, ADM ou Central cadastrado.</p>
+      <p className="config-vazio">Nenhum usuário cadastrado.</p>
     ) : <div className="rolagem-tabela">
       <table className="tabela-principal tabela-usuarios">
-        <thead><tr><th>Nome</th><th>E-mail de acesso</th><th>Setor</th><th>Situação</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Nome</th><th>E-mail de acesso</th><th>Perfil e centro</th><th>Situação</th><th>Ações</th></tr></thead>
         <tbody>{usuarios.map(usuario => <tr key={usuario.id}>
           <td><input aria-label={'Nome de ' + usuario.nome} value={usuario.nome}
             disabled={Boolean(ocupado)} onChange={e => atualizarUsuario(usuario.id, 'nome', e.target.value)} /></td>
           <td><input aria-label={'E-mail de ' + usuario.nome} type="email" value={usuario.email}
             disabled={Boolean(ocupado)} onChange={e => atualizarUsuario(usuario.id, 'email', e.target.value)} /></td>
-          <td><select aria-label={'Setor de ' + usuario.nome} value={usuario.perfil}
-            disabled={Boolean(ocupado)} onChange={e => atualizarUsuario(usuario.id, 'perfil', e.target.value as PerfilUsuario)}>
-            <option value="DP">DP</option><option value="ADM">ADM</option><option value="CENTRAL">Central</option>
-          </select></td>
+          <td><div className="formulario-conta">
+            <select aria-label={'Perfil de ' + usuario.nome} value={usuario.perfil}
+              disabled={Boolean(ocupado)} onChange={e => {
+                const perfil = e.target.value as PerfilUsuario;
+                atualizarUsuario(usuario.id, 'perfil', perfil);
+                if (perfil === 'DP') atualizarUsuario(usuario.id, 'centroCustoId', null);
+                else if (!usuario.centroCustoId) atualizarUsuario(usuario.id, 'centroCustoId',
+                  centrosCusto.find(centro => centro.ativo)?.id ?? null);
+              }}>
+              <option value="DP">DP</option><option value="CENTRO_CUSTO">Centro de custo</option>
+            </select>
+            {usuario.perfil === 'CENTRO_CUSTO' && <select aria-label={'Centro de custo de ' + usuario.nome}
+              value={usuario.centroCustoId ?? ''} disabled={Boolean(ocupado)}
+              onChange={e => atualizarUsuario(usuario.id, 'centroCustoId', e.target.value || null)}>
+              <option value="">Selecione</option>
+              {centrosCusto.filter(centro => centro.ativo).map(centro =>
+                <option key={centro.id} value={centro.id}>{centro.nome}</option>)}
+            </select>}
+          </div></td>
           <td><label className="usuario-ativo"><input type="checkbox" checked={usuario.ativo}
             disabled={Boolean(ocupado)} onChange={e => atualizarUsuario(usuario.id, 'ativo', e.target.checked)} />
             {usuario.ativo ? 'Ativo' : 'Inativo'}</label></td>
@@ -204,10 +233,23 @@ export default function Usuarios() {
           </label>
         </div> : <div className="formulario-conta">
           <label>Setor
-            <select value={rascunho.perfil} onChange={e => atualizarRascunho('perfil', e.target.value as PerfilUsuario)}>
-              <option value="DP">DP</option><option value="ADM">ADM</option><option value="CENTRAL">Central</option>
+            <select value={rascunho.perfil} onChange={e => {
+              const perfil = e.target.value as PerfilUsuario;
+              atualizarRascunho('perfil', perfil);
+              atualizarRascunho('centroCustoId', perfil === 'DP' ? null
+                : centrosCusto.find(centro => centro.ativo)?.id ?? null);
+            }}>
+              <option value="DP">DP</option><option value="CENTRO_CUSTO">Centro de custo</option>
             </select>
           </label>
+          {rascunho.perfil === 'CENTRO_CUSTO' && <label>Centro de custo
+            <select required value={rascunho.centroCustoId ?? ''}
+              onChange={e => atualizarRascunho('centroCustoId', e.target.value || null)}>
+              <option value="">Selecione um centro</option>
+              {centrosCusto.filter(centro => centro.ativo).map(centro =>
+                <option key={centro.id} value={centro.id}>{centro.nome}</option>)}
+            </select>
+          </label>}
           <label>Senha inicial
             <input type="password" required minLength={6} maxLength={128} autoComplete="new-password"
               value={senhaNova} onChange={e => setSenhaNova(e.target.value)} />
