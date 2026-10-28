@@ -3,7 +3,7 @@ import { cadastroVazio, cadastrarEmpresa, cadastrarSetor, contratar, desligar,
   movimentar, fotografarFuncionarios, validarCpf, idsVinculosAtivos } from './cadastros';
 
 const dp = { id: 'dp', perfil: 'DP' as const };
-const adm = { id: 'adm', perfil: 'ADM' as const };
+const adm = { id: 'adm', perfil: 'CENTRO_CUSTO' as const, centrosCustoIds: [] };
 function preparado() {
   const e = cadastrarEmpresa(cadastroVazio(), 'Contratante Alfa', dp, 0);
   const d = cadastrarEmpresa(e, 'Unidade Beta', dp, e.revisao);

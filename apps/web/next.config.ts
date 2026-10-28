@@ -6,10 +6,13 @@ import type { NextConfig } from 'next';
  */
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Permite que o Next dev sirva assets/HMR quando acessado pelo IP da LAN.
+  allowedDevOrigins: ['10.85.1.136'],
   async rewrites() {
-    const destino = process.env.API_INTERNAL_URL ??
-      (process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : null);
-    if (!destino) return [];
+    // Em produção, o roteador de Services do Vercel envia /api/* à API.
+    // Este proxy existe apenas para o desenvolvimento local com pnpm dev.
+    if (process.env.NODE_ENV !== 'development' || process.env.VERCEL === '1') return [];
+    const destino = process.env.API_INTERNAL_URL ?? 'http://localhost:3001';
     const base = destino.replace(/\/$/, '');
     if (!URL.canParse(base) || !['http:', 'https:'].includes(new URL(base).protocol))
       throw new Error('API_INTERNAL_URL precisa ser URL HTTP(S) válida');

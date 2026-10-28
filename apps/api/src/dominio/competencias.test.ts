@@ -3,12 +3,17 @@ import type { CampoDinamico, Funcionario } from '@odontofolha/contracts';
 import {
   abrirCompetencia, incluirCampoNaCompetencia, definirVinculo, definirBloqueioCampo, salvarLancamento,
   limparLancamentos, pendenciasComissao, concluirComissao, reabrirComissao, consolidarEstado,
+  fecharCompetencia, reabrirCompetencia,
 } from './competencias';
 
 const outubro = { ano: 2026, mes: 10 };
 const dp = { id: 'dp-sintetico', perfil: 'DP' as const };
-const adm = { id: 'adm-sintetico', perfil: 'ADM' as const };
-const central = { id: 'central-sintetico', perfil: 'CENTRAL' as const };
+const centroAdmId = 'centro-adm';
+const centroCentralId = 'centro-central';
+const adm = { id: 'adm-sintetico', perfil: 'CENTRO_CUSTO' as const,
+  centrosCustoIds: [centroAdmId] };
+const central = { id: 'central-sintetico', perfil: 'CENTRO_CUSTO' as const,
+  centrosCustoIds: [centroCentralId] };
 const pessoa: Funcionario = {
   id: 'vinculo-1', empresaContratanteId: 'empresa-1', empresaLotadoId: 'empresa-1',
   setorLotacaoId: 'setor-1', cpf: '00000000001', nome: 'Pessoa Exemplo',
@@ -29,7 +34,7 @@ function novo() {
     competencia: outubro, funcionarios: [pessoa], campos: [beneficio, comissao],
     vinculos: [{ funcionarioId: pessoa.id, campoId: comissao.id },
       { funcionarioId: pessoa.id, campoId: beneficio.id }],
-    gruposComissao: [{ grupoId: 'c', responsavel: 'ADM' }],
+    gruposComissao: [{ grupoId: 'c', responsavel: 'ADM', centroCustoId: centroAdmId }],
   });
 }
 describe('Competências, papéis e auditoria E0', () => {
@@ -127,7 +132,7 @@ describe('Competências, papéis e auditoria E0', () => {
   it('comissão NENHUM é editável por DP sem concluir envio', () => {
     const c = abrirCompetencia({ competencia: outubro, funcionarios: [pessoa],
       campos: [comissao], vinculos: [{ funcionarioId: pessoa.id, campoId: 'c1' }],
-      gruposComissao: [{ grupoId: 'c', responsavel: 'NENHUM' }] });
+      gruposComissao: [{ grupoId: 'c', responsavel: 'NENHUM', centroCustoId: null }] });
     expect(() => concluirComissao(c, 'c', dp, c.revisao)).toThrow(/não utiliza/);
     const editado = salvarLancamento(c, { funcionarioId: pessoa.id,
       campoId: 'c1', valor: 70, modo: 'total', versaoEsperada: c.revisao }, dp);
@@ -144,5 +149,19 @@ describe('Competências, papéis e auditoria E0', () => {
     expect(limpo.lancamentos).toHaveLength(1);
     expect(limpo.lancamentos[0].vigente).toBe(false);
     expect(limpo.auditoria.at(-1)?.acao).toBe('LANCAMENTO_LIMPO');
+  });
+  it('fecha a competência com pendências e exige DP/ADMIN para reabrir', () => {
+    const fechado = fecharCompetencia(novo(), dp, 0, true);
+    expect(fechado).toMatchObject({ fechadaComPendencias: true, fechadaPor: dp.id,
+      revisao: 1 });
+    expect(fechado.fechadaEm).toBeTruthy();
+    expect(fechado.auditoria.at(-1)?.acao).toBe('COMPETENCIA_FECHADA_COM_PENDENCIAS');
+    expect(() => salvarLancamento(fechado, { funcionarioId: pessoa.id, campoId: 'c1',
+      valor: 15, modo: 'total', versaoEsperada: 1 }, adm)).toThrow(/Competência fechada/);
+    expect(() => reabrirCompetencia(fechado, adm, 1)).toThrow(/DP\/ADMIN/);
+    const aberta = reabrirCompetencia(fechado, dp, 1);
+    expect(aberta).toMatchObject({ fechadaEm: null, fechadaPor: null,
+      fechadaComPendencias: false, revisao: 2 });
+    expect(aberta.auditoria.at(-1)?.acao).toBe('COMPETENCIA_REABERTA');
   });
 });

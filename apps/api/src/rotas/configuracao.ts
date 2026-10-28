@@ -5,9 +5,10 @@ import type { criarConfiguracaoPostgres } from '../repositorios/configuracao-pos
 
 type Configuracao = ReturnType<typeof criarConfiguracaoPostgres>;
 const uuid = z.uuid(), nome = z.string().trim().min(1).max(160);
+const responsavel = z.union([uuid, z.literal('NENHUM')]);
 const grupoSchema = z.object({
   nome, origem: z.enum(['BENEFICIO', 'COMISSAO']),
-  responsavel: z.enum(['ADM', 'CENTRAL', 'NENHUM']),
+  responsavel,
 }).strict();
 const campoSchema = z.object({
   grupoId: uuid, nome,
@@ -17,6 +18,7 @@ const campoSchema = z.object({
   mes: z.number().int().min(1).max(12),
 }).strict();
 const statusSchema = z.object({ ativo: z.boolean() }).strict();
+const grupoEdicaoSchema = z.object({ nome, responsavel }).strict();
 const competenciaMes = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)
   .refine(valor => Number(valor.slice(0, 4)) >= 2000 && Number(valor.slice(0, 4)) <= 2200);
 const basesBeneficioSchema = z.object({
@@ -26,7 +28,17 @@ const basesBeneficioSchema = z.object({
     funcionarioId: uuid,
     campoId: uuid,
     valor: z.union([z.number().finite(), z.string().min(1)]),
-  }).strict()).min(1).max(10000),
+  }).strict()).max(10000),
+  percentuaisDesconto: z.array(z.object({
+    funcionarioId: uuid, campoOrigemId: uuid,
+    percentual: z.number().finite().min(0).max(100),
+  }).strict()).max(10000).optional(),
+}).strict();
+const regraDescontoSchema = z.object({
+  nomeColuna: nome,
+  percentualPadrao: z.number().finite().min(0).max(100),
+  competencia: competenciaMes,
+  ativo: z.boolean(),
 }).strict();
 const vinculosBeneficioSchema = z.object({
   funcionariosIds: z.array(uuid).min(1).max(10000),
@@ -34,7 +46,7 @@ const vinculosBeneficioSchema = z.object({
 
 const criacaoCompletaSchema = z.object({
   nome, origem: z.enum(['BENEFICIO', 'COMISSAO']),
-  responsavel: z.enum(['ADM', 'CENTRAL', 'NENHUM']),
+  responsavel,
   campo: z.object({
     nome,
     tipo: z.enum(['moeda', 'percentual', 'data', 'horario']),
@@ -42,6 +54,18 @@ const criacaoCompletaSchema = z.object({
     ano: z.number().int().min(2000).max(2200),
     mes: z.number().int().min(1).max(12),
   }).strict(),
+  descontoBeneficio: z.object({
+    nomeColuna: nome,
+    percentualPadrao: z.number().finite().min(0).max(100),
+    ano: z.number().int().min(2000).max(2200),
+    mes: z.number().int().min(1).max(12),
+  }).strict().optional(),
+  funcionariosIds: z.array(uuid).max(10000),
+}).strict();
+const grupoEdicaoCompletaSchema = z.object({
+  nome, responsavel,
+  campos: z.array(campoSchema.omit({ grupoId: true }).extend({ id: uuid, ativo: z.boolean() }))
+    .max(500),
   funcionariosIds: z.array(uuid).max(10000),
 }).strict();
 
@@ -63,6 +87,40 @@ export function criarRotasConfiguracao(
   app.get('/configuracao/campos', async c =>
     c.json(await deps.configuracao.listar()));
 
+  app.get('/configuracao/centros-custo', async c =>
+    c.json({ centrosCusto: await deps.configuracao.listarCentrosCusto() }));
+
+  app.post('/configuracao/centros-custo', async c => {
+    const body = z.object({ nome }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ erro: 'Informe o nome do centro de custo.' }, 400);
+    try {
+      return c.json(await deps.configuracao.criarCentroCusto(body.data.nome,
+        c.get('sessao').usuarioId), 201);
+    } catch (e) {
+      return c.json({ erro: e instanceof Error && /duplicate|unique/i.test(e.message)
+        ? 'Já existe um centro de custo com esse nome.'
+        : 'Não foi possível criar o centro de custo.' }, 400);
+    }
+  });
+
+  app.patch('/configuracao/centros-custo/:id', async c => {
+    const id = uuid.safeParse(c.req.param('id'));
+    const body = z.object({ nome, ativo: z.boolean() }).strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!id.success || !body.success)
+      return c.json({ erro: 'Confira o centro de custo.' }, 400);
+    try {
+      const atualizado = await deps.configuracao.editarCentroCusto(id.data,
+        body.data.nome, body.data.ativo, c.get('sessao').usuarioId);
+      return atualizado ? c.json({ sucesso: true })
+        : c.json({ erro: 'Centro de custo não encontrado.' }, 404);
+    } catch (e) {
+      return c.json({ erro: e instanceof Error && /duplicate|unique/i.test(e.message)
+        ? 'Já existe um centro de custo com esse nome.'
+        : 'Não foi possível atualizar o centro de custo.' }, 400);
+    }
+  });
+
   app.get('/configuracao/grupos/:id/bases-beneficios', async c => {
     const id = uuid.safeParse(c.req.param('id'));
     const competencia = competenciaMes.safeParse(c.req.query('competencia'));
@@ -83,6 +141,7 @@ export function criarRotasConfiguracao(
       const resultado = await deps.configuracao.salvarBasesBeneficio(
         id.data, ano, mes, body.data.valores,
         body.data.versaoEsperada, c.get('sessao').usuarioId,
+        body.data.percentuaisDesconto,
       );
       return c.json(resultado);
     } catch (e) {
@@ -94,13 +153,30 @@ export function criarRotasConfiguracao(
     }
   });
 
+  app.post('/configuracao/campos/:id/desconto-beneficio', async c => {
+    const id = uuid.safeParse(c.req.param('id'));
+    const body = regraDescontoSchema.safeParse(await c.req.json().catch(() => null));
+    if (!id.success || !body.success)
+      return c.json({ erro: 'Informe o nome, percentual e competência da regra.' }, 400);
+    const [ano, mes] = body.data.competencia.split('-').map(Number);
+    try {
+      const regra = await deps.configuracao.salvarRegraDescontoBeneficio(
+        id.data, body.data.nomeColuna, body.data.percentualPadrao,
+        ano, mes, body.data.ativo, c.get('sessao').usuarioId,
+      );
+      return c.json({ regra });
+    } catch (e) {
+      return c.json({ erro: e instanceof Error ? e.message : 'Não foi possível salvar a regra.' }, 400);
+    }
+  });
+
   app.post('/configuracao/grupos/:id/funcionarios', async c => {
     const id = uuid.safeParse(c.req.param('id'));
     const body = vinculosBeneficioSchema.safeParse(await c.req.json().catch(() => null));
     if (!id.success || !body.success)
       return c.json({ erro: 'Selecione pelo menos um funcionário cadastrado' }, 400);
     try {
-      return c.json(await deps.configuracao.vincularFuncionariosBeneficio(
+      return c.json(await deps.configuracao.vincularFuncionariosGrupo(
         id.data, body.data.funcionariosIds, c.get('sessao').usuarioId,
       ));
     } catch (e) {
@@ -109,11 +185,63 @@ export function criarRotasConfiguracao(
     }
   });
 
+  app.post('/configuracao/grupos/:id/funcionarios/:funcionarioId/remover', async c => {
+    const id = uuid.safeParse(c.req.param('id'));
+    const funcionarioId = uuid.safeParse(c.req.param('funcionarioId'));
+    if (!id.success || !funcionarioId.success)
+      return c.json({ erro: 'Grupo ou funcionário inválido' }, 400);
+    try {
+      const removido = await deps.configuracao.removerVinculoFuncionario(
+        id.data, funcionarioId.data, c.get('sessao').usuarioId,
+      );
+      return removido ? c.json({ sucesso: true }) : c.json({ erro: 'Vínculo não encontrado' }, 404);
+    } catch { return c.json({ erro: 'Não foi possível remover o vínculo' }, 400); }
+  });
+
+  app.post('/configuracao/grupos/:id/editar', async c => {
+    const id = uuid.safeParse(c.req.param('id'));
+    const body = grupoEdicaoSchema.safeParse(await c.req.json().catch(() => null));
+    if (!id.success || !body.success)
+      return c.json({ erro: 'Confira o nome e o responsável informado' }, 400);
+    try {
+      const atualizado = await deps.configuracao.editarGrupo(id.data, body.data,
+        c.get('sessao').usuarioId);
+      return atualizado ? c.json({ sucesso: true }) : c.json({ erro: 'Cadastro não encontrado' }, 404);
+    } catch { return c.json({ erro: 'Não foi possível editar o cadastro' }, 400); }
+  });
+
+  app.post('/configuracao/grupos/:id/editar-completo', async c => {
+    const id = uuid.safeParse(c.req.param('id'));
+    const body = grupoEdicaoCompletaSchema.safeParse(await c.req.json().catch(() => null));
+    if (!id.success || !body.success)
+      return c.json({ erro: 'Confira a identificação, os campos e os funcionários vinculados' }, 400);
+    try {
+      const atualizado = await deps.configuracao.editarGrupoCompleto(id.data, body.data,
+        c.get('sessao').usuarioId);
+      return atualizado ? c.json({ sucesso: true }) : c.json({ erro: 'Cadastro não encontrado' }, 404);
+    } catch (e) {
+      return c.json({ erro: e instanceof Error ? e.message : 'Não foi possível editar o cadastro' }, 400);
+    }
+  });
+
+  app.post('/configuracao/grupos/:id/status', async c => {
+    const id = uuid.safeParse(c.req.param('id'));
+    const body = statusSchema.safeParse(await c.req.json().catch(() => null));
+    if (!id.success || !body.success) return c.json({ erro: 'Status inválido' }, 400);
+    try {
+      const atualizado = await deps.configuracao.ativarGrupo(
+        id.data, body.data.ativo, c.get('sessao').usuarioId,
+      );
+      return atualizado ? c.json({ sucesso: true }) : c.json({ erro: 'Cadastro não encontrado' }, 404);
+    } catch { return c.json({ erro: 'Não foi possível alterar o cadastro' }, 400); }
+  });
+
 
   app.post('/configuracao/criacao', async c => {
     const parsed = criacaoCompletaSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success || (parsed.data.origem === 'BENEFICIO' &&
-      parsed.data.responsavel !== 'NENHUM'))
+      parsed.data.responsavel !== 'NENHUM') || (parsed.data.descontoBeneficio &&
+      (parsed.data.origem !== 'BENEFICIO' || parsed.data.campo.tipo !== 'moeda')))
       return c.json({ erro: 'Verifique as informações da criação.' }, 400);
     try {
       const novo = await deps.configuracao.criarCompleto(parsed.data,
@@ -158,6 +286,22 @@ export function criarRotasConfiguracao(
         id.data, body.data.ativo, c.get('sessao').usuarioId);
       return atualizado ? c.json({ sucesso: true }) : c.json({ erro: 'Campo inexistente' }, 404);
     } catch { return c.json({ erro: 'Falha ao alterar campo' }, 400); }
+  });
+
+  app.post('/configuracao/campos/:id/editar', async c => {
+    const id = uuid.safeParse(c.req.param('id'));
+    const body = campoSchema.omit({ grupoId: true }).safeParse(await c.req.json().catch(() => null));
+    if (!id.success || !body.success) return c.json({ erro: 'Campo inválido' }, 400);
+    try {
+      const x = body.data;
+      const atualizado = await deps.configuracao.editarCampo(id.data, {
+        nome: x.nome, tipo: x.tipo, classificacao: x.classificacao,
+        ano: x.ano, mes: x.mes,
+      }, c.get('sessao').usuarioId);
+      return atualizado ? c.json({ sucesso: true }) : c.json({ erro: 'Campo não encontrado' }, 404);
+    } catch (e) {
+      return c.json({ erro: e instanceof Error ? e.message : 'Não foi possível editar o campo' }, 400);
+    }
   });
 
   return app;

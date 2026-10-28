@@ -4,6 +4,7 @@ import { abrirCompetencia } from '../dominio/competencias';
 import { criarRotasOperacionais, type SessaoOperacional } from './operacionais';
 
 const competencia = { ano: 2026, mes: 10 };
+const centroAdmId = 'centro-adm';
 const f: Funcionario = {
   id: 'v1', empresaContratanteId: 'e1', empresaLotadoId: 'e1',
   setorLotacaoId: 's1', cpf: '00000000001', nome: 'Pessoa de Teste',
@@ -17,7 +18,7 @@ const c: CampoDinamico = {
 function ambiente(sessao: SessaoOperacional | null = null, conflito = false) {
   let estado = abrirCompetencia({ competencia, funcionarios: [f], campos: [c],
     vinculos: [{ funcionarioId: 'v1', campoId: 'c1' }],
-    gruposComissao: [{ grupoId: 'g1', responsavel: 'ADM' }] });
+    gruposComissao: [{ grupoId: 'g1', responsavel: 'ADM', centroCustoId: centroAdmId }] });
   const app = criarRotasOperacionais({
     autenticar: async () => sessao,
     buscarCompetencia: async () => estado,
@@ -27,15 +28,19 @@ function ambiente(sessao: SessaoOperacional | null = null, conflito = false) {
     },
     funcionariosAtivos: async () => new Set(['v1']),
     nomesExportacao: async () => ({ empresas: { e1: 'Odontoart Exemplo' }, setores: { s1: 'Atendimento' } }),
-    obterBeneficios: async () => ({ versao: 0, bases: [], excecoes: [], auditoria: [] }),
-    listarCompetencias: async () => [{ id: '1', ano: 2026, mes: 10, revisao: estado.revisao }],
+    obterBeneficios: async () => ({ versao: 0, bases: [], excecoes: [],
+      regrasDesconto: [], percentuaisDesconto: [], auditoria: [] }),
+    listarCompetencias: async () => [{ id: '1', ano: 2026, mes: 10, revisao: estado.revisao,
+      fechadaEm: estado.fechadaEm, fechadaComPendencias: estado.fechadaComPendencias }],
     abrirNovaCompetencia: async (ano, mes) => ({ id: 'nova', ano, mes, revisao: 0 }),
   });
   return { app, consultar: () => estado };
 }
-const dp = { usuarioId: 'dp-exemplo', perfil: 'DP' as const };
-const adm = { usuarioId: 'adm-exemplo', perfil: 'ADM' as const };
-const central = { usuarioId: 'central-exemplo', perfil: 'CENTRAL' as const };
+const dp = { usuarioId: 'dp-exemplo', perfil: 'DP' as const, centrosCustoIds: [] };
+const adm = { usuarioId: 'adm-exemplo', perfil: 'CENTRO_CUSTO' as const,
+  centrosCustoIds: [centroAdmId] };
+const central = { usuarioId: 'central-exemplo', perfil: 'CENTRO_CUSTO' as const,
+  centrosCustoIds: ['centro-central'] };
 describe('Rotas operacionais protegidas, sem banco real', () => {
   it('nega por padrão todo acesso sem sessão', async () => {
     const a = ambiente();
@@ -119,5 +124,35 @@ describe('Rotas operacionais protegidas, sem banco real', () => {
         modo: 'total', versaoEsperada: 0 }),
     });
     expect(invalido.status).toBe(400);
+  });
+  it('informa setores com pendências, fecha com confirmação e permite reabertura por DP/ADMIN', async () => {
+    const a = ambiente(dp);
+    const caminho = 'http://localhost/api/competencias/1/fechar';
+    const aviso = await a.app.request(caminho, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ versaoEsperada: 0 }),
+    });
+    expect(aviso.status).toBe(409);
+    expect(await aviso.json()).toMatchObject({ codigo: 'PENDENCIAS',
+      pendencias: [{ responsavel: 'ADM', quantidade: 1 }] });
+    const fechamento = await a.app.request(caminho, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ versaoEsperada: 0, confirmarPendencias: true }),
+    });
+    expect(fechamento.status).toBe(200);
+    expect(a.consultar()).toMatchObject({ fechadaComPendencias: true, fechadaPor: dp.usuarioId });
+    const negada = await ambiente(adm).app.request(
+      'http://localhost/api/competencias/1/reabrir', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ versaoEsperada: 1 }),
+      });
+    expect(negada.status).toBe(403);
+    const reabertura = await a.app.request('http://localhost/api/competencias/1/reabrir', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ versaoEsperada: 1 }),
+    });
+    expect(reabertura.status).toBe(200);
+    expect(a.consultar()).toMatchObject({ fechadaEm: null, fechadaPor: null,
+      fechadaComPendencias: false });
   });
 });

@@ -1,14 +1,15 @@
 import type {
   CampoDinamico, Competencia, Funcionario, Lancamento, Perfil,
-  ResponsavelComissao, VinculoCampo,
+  VinculoCampo,
 } from '@odontofolha/contracts';
 import { gerarConsolidacao } from './consolidacao';
 import { podeEditarConsolidacao, podePreencherComissao } from './permissoes';
 
-export type AtorFolha = { id: string; perfil: Perfil };
+export type AtorFolha = { id: string; perfil: Perfil; centrosCustoIds?: string[] };
 export type EnvioComissao = {
   grupoId: string;
-  responsavel: ResponsavelComissao;
+  responsavel: string;
+  centroCustoId: string | null;
   concluido: boolean;
   concluidoEm: string | null;
   concluidoPor: string | null;
@@ -24,12 +25,17 @@ export type EstadoCompetencia = {
   vinculos: VinculoCampo[];
   lancamentos: Lancamento[];
   envios: EnvioComissao[];
+  fechadaEm: string | null;
+  fechadaPor: string | null;
+  fechadaComPendencias: boolean;
   /** Campo já visível que foi desativado durante a competência: setor não edita. */
   camposBloqueados: string[];
   revisao: number;
   auditoria: EventoAuditoria[];
 };
-export type CampoResponsavel = { grupoId: string; responsavel: ResponsavelComissao };
+export type CampoResponsavel = {
+  grupoId: string; responsavel: string; centroCustoId: string | null;
+};
 export type OpcaoLancamento = {
   funcionarioId: string;
   campoId: string;
@@ -47,6 +53,9 @@ function registro(estado: EstadoCompetencia, acao: string, entidadeId: string, a
 }
 function verificarRevisao(estado: EstadoCompetencia, revisao: number): void {
   if (estado.revisao !== revisao) throw new Error('Conflito de edição: recarregue a competência');
+}
+export function exigirCompetenciaAberta(estado: EstadoCompetencia): void {
+  if (estado.fechadaEm) throw new Error('Competência fechada; reabra para fazer alterações');
 }
 function aplicado(estado: EstadoCompetencia, funcionarioId: string, campoId: string): boolean {
   return estado.vinculos.some(v => v.funcionarioId === funcionarioId && v.campoId === campoId);
@@ -96,10 +105,41 @@ export function abrirCompetencia(dados: {
     vinculos: dados.vinculos.filter(v => idsFuncionario.has(v.funcionarioId) && idsCampo.has(v.campoId)),
     lancamentos: [], camposBloqueados: [], envios: dados.gruposComissao
       .filter(g => colunas.some(c => c.origem === 'COMISSAO' && c.grupoId === g.grupoId))
-      .map(g => ({ grupoId: g.grupoId, responsavel: g.responsavel, concluido: false,
+      .map(g => ({ grupoId: g.grupoId, responsavel: g.responsavel,
+        centroCustoId: g.centroCustoId, concluido: false,
         concluidoEm: null, concluidoPor: null })),
+    fechadaEm: null, fechadaPor: null, fechadaComPendencias: false,
     revisao: 0, auditoria: [],
   };
+}
+
+export function fecharCompetencia(
+  estado: EstadoCompetencia, ator: AtorFolha, versaoEsperada: number,
+  comPendencias: boolean,
+): EstadoCompetencia {
+  verificarRevisao(estado, versaoEsperada);
+  if (!podeEditarConsolidacao(ator.perfil))
+    throw new Error('Somente DP/ADMIN pode fechar competência');
+  exigirCompetenciaAberta(estado);
+  const data = new Date().toISOString();
+  return { ...estado, fechadaEm: data, fechadaPor: ator.id,
+    fechadaComPendencias: comPendencias, revisao: estado.revisao + 1,
+    auditoria: [...estado.auditoria, registro(estado,
+      comPendencias ? 'COMPETENCIA_FECHADA_COM_PENDENCIAS' : 'COMPETENCIA_FECHADA',
+      'COMPETENCIA', ator)] };
+}
+
+export function reabrirCompetencia(
+  estado: EstadoCompetencia, ator: AtorFolha, versaoEsperada: number,
+): EstadoCompetencia {
+  verificarRevisao(estado, versaoEsperada);
+  if (!podeEditarConsolidacao(ator.perfil))
+    throw new Error('Somente DP/ADMIN pode reabrir competência');
+  if (!estado.fechadaEm) return estado;
+  return { ...estado, fechadaEm: null, fechadaPor: null, fechadaComPendencias: false,
+    revisao: estado.revisao + 1,
+    auditoria: [...estado.auditoria, registro(estado, 'COMPETENCIA_REABERTA',
+      'COMPETENCIA', ator)] };
 }
 
 /** Atualiza a competência corrente, sem adicionar campos a competências anteriores. */
@@ -108,6 +148,7 @@ export function incluirCampoNaCompetencia(
   versaoEsperada: number,
 ): EstadoCompetencia {
   verificarRevisao(estado, versaoEsperada);
+  exigirCompetenciaAberta(estado);
   if (!podeEditarConsolidacao(ator.perfil)) throw new Error('Sem permissão para alterar colunas');
   if (chaveMes(campo.criadoEm) > chaveMes(estado.competencia))
     throw new Error('Campo não pertence a esta competência');
@@ -126,6 +167,7 @@ export function definirVinculo(
   vinculado: boolean, ator: AtorFolha, versaoEsperada: number,
 ): EstadoCompetencia {
   verificarRevisao(estado, versaoEsperada);
+  exigirCompetenciaAberta(estado);
   if (!podeEditarConsolidacao(ator.perfil)) throw new Error('Sem permissão para vínculos');
   if (!estado.funcionarios.some(f => f.id === funcionarioId) ||
     !estado.campos.some(c => c.id === campoId)) throw new Error('Funcionário ou campo inexistente');
@@ -147,6 +189,7 @@ export function salvarLancamento(
   estado: EstadoCompetencia, opcao: OpcaoLancamento, ator: AtorFolha,
 ): ResultadoEdicao {
   verificarRevisao(estado, opcao.versaoEsperada);
+  exigirCompetenciaAberta(estado);
   const campo = estado.campos.find(c => c.id === opcao.campoId);
   const funcionario = estado.funcionarios.find(f => f.id === opcao.funcionarioId);
   if (!campo || !funcionario) throw new Error('Funcionário ou campo inexistente');
@@ -160,7 +203,8 @@ export function salvarLancamento(
   } else {
     const envio = estado.envios.find(e => e.grupoId === campo.grupoId);
     if (!envio) throw new Error('Responsável da comissão não configurado');
-    if (!podePreencherComissao(ator.perfil, envio.responsavel, envio.concluido, associado))
+    if (!podePreencherComissao(ator.perfil, ator.centrosCustoIds ?? [], envio.centroCustoId,
+      envio.concluido, associado))
       throw new Error('Comissão bloqueada ou fora do escopo do perfil');
   }
   if (estado.camposBloqueados.includes(campo.id) && !podeEditarConsolidacao(ator.perfil))
@@ -185,12 +229,33 @@ export function salvarLancamento(
     registro(estado, substitui ? 'LANCAMENTO_SUBSTITUIDO' : 'LANCAMENTO_CRIADO', novo.id, ator)),
     avisos };
 }
+
+/** Salva o mesmo valor em vários funcionários como uma única revisão lógica. */
+export function salvarLancamentosEmMassa(
+  estado: EstadoCompetencia,
+  opcao: Omit<OpcaoLancamento, 'funcionarioId'> & { funcionariosIds: string[] },
+  ator: AtorFolha,
+): ResultadoEdicao {
+  const ids = [...new Set(opcao.funcionariosIds)];
+  if (!ids.length) throw new Error('Selecione pelo menos um funcionário');
+  let atual = estado;
+  const avisos: string[] = [];
+  for (const funcionarioId of ids) {
+    const resultado = salvarLancamento(atual, {
+      ...opcao, funcionarioId, versaoEsperada: atual.revisao,
+    }, ator);
+    atual = resultado.estado;
+    avisos.push(...resultado.avisos);
+  }
+  return { estado: { ...atual, revisao: estado.revisao + 1 }, avisos: [...new Set(avisos)] };
+}
 /** Desativação no mês preserva coluna/valores, mas bloqueia novos envios do setor. */
 export function definirBloqueioCampo(
   estado: EstadoCompetencia, campoId: string, bloqueado: boolean,
   ator: AtorFolha, versaoEsperada: number,
 ): EstadoCompetencia {
   verificarRevisao(estado, versaoEsperada);
+  exigirCompetenciaAberta(estado);
   if (!podeEditarConsolidacao(ator.perfil)) throw new Error('Somente DP/ADMIN altera bloqueio');
   if (!estado.campos.some(c => c.id === campoId)) throw new Error('Campo não pertence ao mês');
   const bloqueios = new Set(estado.camposBloqueados);
@@ -206,6 +271,7 @@ export function limparLancamentos(
   ator: AtorFolha, versaoEsperada: number,
 ): EstadoCompetencia {
   verificarRevisao(estado, versaoEsperada);
+  exigirCompetenciaAberta(estado);
   if (!podeEditarConsolidacao(ator.perfil)) throw new Error('Somente DP/ADMIN pode limpar valores');
   const existentes = registrosVigentes(estado, funcionarioId, campoId);
   if (!existentes.length) return estado;
@@ -215,9 +281,10 @@ export function limparLancamentos(
 }
 function validarGrupo(estado: EstadoCompetencia, grupoId: string, ator: AtorFolha): EnvioComissao {
   const envio = estado.envios.find(e => e.grupoId === grupoId);
-  if (!envio || envio.responsavel === 'NENHUM')
+  if (!envio || !envio.centroCustoId)
     throw new Error('Esta comissão não utiliza conclusão de envio');
-  if (!podeEditarConsolidacao(ator.perfil) && ator.perfil !== envio.responsavel)
+  if (!podeEditarConsolidacao(ator.perfil) &&
+    !ator.centrosCustoIds?.includes(envio.centroCustoId))
     throw new Error('Perfil não autorizado para a comissão');
   return envio;
 }
@@ -232,6 +299,7 @@ export function concluirComissao(
   versaoEsperada: number, confirmarPendentes = false,
 ): EstadoCompetencia {
   verificarRevisao(estado, versaoEsperada);
+  exigirCompetenciaAberta(estado);
   const envio = validarGrupo(estado, grupoId, ator);
   if (envio.concluido) return estado;
   if (pendenciasComissao(estado, grupoId).length && !confirmarPendentes)
@@ -246,6 +314,7 @@ export function reabrirComissao(
   estado: EstadoCompetencia, grupoId: string, ator: AtorFolha, versaoEsperada: number,
 ): EstadoCompetencia {
   verificarRevisao(estado, versaoEsperada);
+  exigirCompetenciaAberta(estado);
   if (!podeEditarConsolidacao(ator.perfil)) throw new Error('Somente DP/ADMIN pode reabrir comissão');
   const envio = estado.envios.find(e => e.grupoId === grupoId);
   if (!envio) throw new Error('Comissão inexistente');

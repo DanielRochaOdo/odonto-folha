@@ -15,6 +15,34 @@
       "when": 1792685400000,
       "tag": "0001_vinculos_grupos",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792783691877,
+      "tag": "0002_fechamento_competencia",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793021955224,
+      "tag": "0003_descontos_automaticos_beneficios",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793123028324,
+      "tag": "0004_centros_custo_dinamicos",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793123051614,
+      "tag": "0005_indice_usuarios_centros_custo",
+      "breakpoints": true
     }
   ]
 }

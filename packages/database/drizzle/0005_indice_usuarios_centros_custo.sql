@@ -1,0 +1,1 @@
+CREATE INDEX "usuarios_perfis_centro_idx" ON "usuarios_perfis" USING btree ("centro_custo_id");

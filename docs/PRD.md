@@ -13,7 +13,7 @@ As empresas contratantes são divisões de organização/exportação, não inte
 ## Usuários e permissões
 - **ADMIN:** superusuário com acesso completo, inclusive configuração, cadastro, auditoria e edição.
 - **DP:** gerencia colaboradores, competências, campos, benefícios, comissões, vínculos, configurações,
-  responsáveis e edição da tabela principal.
+  usuários que não sejam ADMIN, responsáveis e edição da tabela principal.
 - **ADM e CENTRAL:** somente preenchem campos das comissões sob responsabilidade de seu grupo e dos
   funcionários vinculados pelo DP. Não alteram cadastros nem estrutura.
 - O responsável por comissões é o setor/perfil ADM, CENTRAL ou NENHUM, nunca um usuário individual.

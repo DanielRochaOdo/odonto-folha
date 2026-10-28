@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { z } from '@odontofolha/contracts';
 import type { Perfil } from '@odontofolha/contracts';
 import type { EstadoCompetencia } from '../dominio/competencias';
-import { salvarLancamento, concluirComissao, reabrirComissao, definirVinculo } from '../dominio/competencias';
+import { salvarLancamento, salvarLancamentosEmMassa, concluirComissao, reabrirComissao,
+  definirVinculo, fecharCompetencia, reabrirCompetencia } from '../dominio/competencias';
 import { consolidarComBeneficios, type CatalogoBeneficios } from '../dominio/beneficios';
 import { gerarXlsx, type NomesExportacao } from '../dominio/exportacao-xlsx';
 import { podeEditarConsolidacao } from '../dominio/permissoes';
@@ -10,6 +11,7 @@ import { podeEditarConsolidacao } from '../dominio/permissoes';
 export type SessaoOperacional = {
   usuarioId: string;
   perfil: Perfil;
+  centrosCustoIds: string[];
 };
 export type DependenciasOperacionais = {
   /**
@@ -23,11 +25,16 @@ export type DependenciasOperacionais = {
   funcionariosAtivos: () => Promise<ReadonlySet<string>>;
   nomesExportacao: () => Promise<NomesExportacao>;
   obterBeneficios: () => Promise<CatalogoBeneficios>;
-  listarCompetencias: () => Promise<{ id: string; ano: number; mes: number; revisao: number }[]>;
+  listarCompetencias: () => Promise<{ id: string; ano: number; mes: number; revisao: number;
+    criadaEm?: string; fechadaEm: string | null; fechadaComPendencias: boolean }[]>;
   abrirNovaCompetencia: (ano: number, mes: number, autorId: string) => Promise<{
     id: string; ano: number; mes: number; revisao: number;
   } | null>;
 };
+
+const atorFolha = (sessao: SessaoOperacional) => ({
+  id: sessao.usuarioId, perfil: sessao.perfil, centrosCustoIds: sessao.centrosCustoIds,
+});
 
 const schemaNovaCompetencia = z.object({
   ano: z.number().int().min(2000).max(2200),
@@ -48,14 +55,58 @@ const schemaLancamento = z.object({
   versaoEsperada: z.number().int().nonnegative(),
   confirmarSubstituicao: z.boolean().optional(),
 }).strict();
+const schemaLancamentosEmMassa = z.object({
+  funcionariosIds: z.array(z.string().min(1)).min(1).max(10000),
+  campoId: z.string().min(1),
+  valor: z.union([z.number().finite(), z.string().min(1)]),
+  modo: z.enum(['total', 'parcela']),
+  versaoEsperada: z.number().int().nonnegative(),
+  confirmarSubstituicao: z.boolean().optional(),
+}).strict();
 const schemaEnvio = z.object({
   versaoEsperada: z.number().int().nonnegative(),
   confirmarPendentes: z.boolean().optional(),
 }).strict();
+const schemaFechamento = z.object({
+  versaoEsperada: z.number().int().nonnegative(),
+  confirmarPendencias: z.boolean().optional(),
+}).strict();
+
+type PendenciaSetor = { responsavel: string; quantidade: number;
+  grupos: { nome: string; quantidade: number }[] };
+function agruparPendencias(
+  estado: EstadoCompetencia, catalogo: CatalogoBeneficios, funcionariosAtivos: ReadonlySet<string>,
+): PendenciaSetor[] {
+  const consolidado = consolidarComBeneficios(estado, catalogo, funcionariosAtivos);
+  const campos = new Map(consolidado.colunas.map(campo => [campo.id, campo]));
+  const responsaveis = new Map(estado.envios.map(envio => [envio.grupoId, envio.responsavel]));
+  const setores = new Map<string, Map<string, number>>();
+  for (const aba of consolidado.abas) for (const linha of aba.funcionarios) {
+    for (const [campoId, celula] of Object.entries(linha.celulas)) {
+      if (celula.situacao !== 'pendente') continue;
+      const campo = campos.get(campoId);
+      if (!campo) continue;
+      const responsavel = campo.origem === 'BENEFICIO' ? 'DP'
+        : responsaveis.get(campo.grupoId) === 'NENHUM'
+          ? 'DP/ADMIN (comissão sem setor definido)'
+          : responsaveis.get(campo.grupoId) ?? 'DP/ADMIN (responsável não definido)';
+      const grupos = setores.get(responsavel) ?? new Map<string, number>();
+      grupos.set(campo.grupoNome, (grupos.get(campo.grupoNome) ?? 0) + 1);
+      setores.set(responsavel, grupos);
+    }
+  }
+  return [...setores].map(([responsavel, grupos]) => ({ responsavel,
+    quantidade: [...grupos.values()].reduce((total, quantidade) => total + quantidade, 0),
+    grupos: [...grupos].map(([nome, quantidade]) => ({ nome, quantidade }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+  })).sort((a, b) => a.responsavel.localeCompare(b.responsavel, 'pt-BR'));
+}
 
 function erroDominio(e: unknown): { status: 400 | 403 | 409; mensagem: string } {
   const m = e instanceof Error ? e.message : 'Operação não permitida';
-  if (/Conflito/.test(m)) return { status: 409, mensagem: 'Conflito de edição: atualize a competência' };
+  if (/Conflito|Competência fechada/.test(m))
+    return { status: 409, mensagem: /Competência fechada/.test(m) ? m
+      : 'Conflito de edição: atualize a competência' };
   if (/Sem permissão|Somente DP|Perfil não autorizado|fora do escopo|bloqueada/.test(m))
     return { status: 403, mensagem: 'Operação não autorizada para este perfil' };
   return { status: 400, mensagem: m };
@@ -109,7 +160,7 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     try {
       const novo = definirVinculo(estado, corpo.data.funcionarioId, corpo.data.campoId,
-        corpo.data.vinculado, { id: sessao.usuarioId, perfil: sessao.perfil },
+        corpo.data.vinculado, atorFolha(sessao),
         corpo.data.versaoEsperada);
       if (novo === estado) return c.json({ revisao: estado.revisao });
       if (!(await deps.salvarSeRevisao(id, estado.revisao, novo)))
@@ -129,7 +180,58 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     return c.json({ ...consolidarComBeneficios(estado, await deps.obterBeneficios(), await deps.funcionariosAtivos()),
       revisao: estado.revisao, versaoBeneficios: (await deps.obterBeneficios()).versao,
-      envios: estado.envios, nomes: await deps.nomesExportacao() });
+      envios: estado.envios, nomes: await deps.nomesExportacao(),
+      fechadaEm: estado.fechadaEm, fechadaPor: estado.fechadaPor,
+      fechadaComPendencias: estado.fechadaComPendencias });
+  });
+
+  app.post('/competencias/:id/fechar', async c => {
+    const sessao = c.get('sessao') as SessaoOperacional;
+    if (!podeEditarConsolidacao(sessao.perfil))
+      return c.json({ erro: 'Somente DP/ADMIN pode fechar competência' }, 403);
+    const parsed = schemaFechamento.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ erro: 'Dados de fechamento inválidos' }, 400);
+    const id = c.req.param('id');
+    const estado = await deps.buscarCompetencia(id);
+    if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
+    if (estado.fechadaEm) return c.json({ erro: 'Competência já está fechada' }, 409);
+    const pendencias = agruparPendencias(estado, await deps.obterBeneficios(),
+      await deps.funcionariosAtivos());
+    if (pendencias.length && !parsed.data.confirmarPendencias)
+      return c.json({ codigo: 'PENDENCIAS', revisao: estado.revisao, pendencias }, 409);
+    try {
+      const novo = fecharCompetencia(estado, atorFolha(sessao),
+        parsed.data.versaoEsperada, pendencias.length > 0);
+      if (!(await deps.salvarSeRevisao(id, estado.revisao, novo)))
+        return c.json({ codigo: 'CONFLITO', erro: 'A competência mudou. Atualize antes de fechar.' }, 409);
+      return c.json({ revisao: novo.revisao, fechadaEm: novo.fechadaEm,
+        fechadaComPendencias: novo.fechadaComPendencias });
+    } catch (e) {
+      const erro = erroDominio(e);
+      return c.json({ erro: erro.mensagem }, erro.status);
+    }
+  });
+
+  app.post('/competencias/:id/reabrir', async c => {
+    const sessao = c.get('sessao') as SessaoOperacional;
+    if (!podeEditarConsolidacao(sessao.perfil))
+      return c.json({ erro: 'Somente DP/ADMIN pode reabrir competência' }, 403);
+    const parsed = schemaFechamento.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ erro: 'Dados de reabertura inválidos' }, 400);
+    const id = c.req.param('id');
+    const estado = await deps.buscarCompetencia(id);
+    if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
+    try {
+      const novo = reabrirCompetencia(estado, atorFolha(sessao),
+        parsed.data.versaoEsperada);
+      if (novo === estado) return c.json({ revisao: estado.revisao, fechadaEm: null });
+      if (!(await deps.salvarSeRevisao(id, estado.revisao, novo)))
+        return c.json({ codigo: 'CONFLITO', erro: 'A competência mudou. Atualize antes de reabrir.' }, 409);
+      return c.json({ revisao: novo.revisao, fechadaEm: null });
+    } catch (e) {
+      const erro = erroDominio(e);
+      return c.json({ erro: erro.mensagem }, erro.status);
+    }
   });
 
   app.get('/competencias/:id/comissoes/:grupo', async c => {
@@ -138,7 +240,8 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     const envio = estado.envios.find(e => e.grupoId === c.req.param('grupo'));
     if (!envio) return c.json({ erro: 'Comissão não encontrada' }, 404);
-    if (!podeEditarConsolidacao(sessao.perfil) && sessao.perfil !== envio.responsavel)
+    if (!podeEditarConsolidacao(sessao.perfil) &&
+      (!envio.centroCustoId || !sessao.centrosCustoIds.includes(envio.centroCustoId)))
       return c.json({ erro: 'Comissão fora do escopo' }, 403);
     const campos = estado.campos.filter(campo => campo.origem === 'COMISSAO' &&
       campo.grupoId === envio.grupoId);
@@ -175,10 +278,30 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     try {
       const resultado = salvarLancamento(estado, parsed.data,
-        { id: sessao.usuarioId, perfil: sessao.perfil });
+        atorFolha(sessao));
       if (!(await deps.salvarSeRevisao(c.req.param('id'), estado.revisao, resultado.estado)))
         return c.json({ erro: 'Conflito de edição: atualize a competência' }, 409);
       return c.json({ revisao: resultado.estado.revisao, avisos: resultado.avisos });
+    } catch (e) {
+      const erro = erroDominio(e);
+      return c.json({ erro: erro.mensagem }, erro.status);
+    }
+  });
+
+  app.post('/competencias/:id/lancamentos-em-massa', async c => {
+    const sessao = c.get('sessao') as SessaoOperacional;
+    const parsed = schemaLancamentosEmMassa.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ erro: 'Dados de lançamento em massa inválidos' }, 400);
+    const id = c.req.param('id');
+    const estado = await deps.buscarCompetencia(id);
+    if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
+    try {
+      const resultado = salvarLancamentosEmMassa(estado, parsed.data,
+        atorFolha(sessao));
+      if (!(await deps.salvarSeRevisao(id, estado.revisao, resultado.estado)))
+        return c.json({ erro: 'Conflito de edição: atualize a competência' }, 409);
+      return c.json({ revisao: resultado.estado.revisao, avisos: resultado.avisos,
+        salvos: parsed.data.funcionariosIds.length });
     } catch (e) {
       const erro = erroDominio(e);
       return c.json({ erro: erro.mensagem }, erro.status);
@@ -193,7 +316,7 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     try {
       const novo = concluirComissao(estado, c.req.param('grupo'),
-        { id: sessao.usuarioId, perfil: sessao.perfil },
+        atorFolha(sessao),
         parsed.data.versaoEsperada, parsed.data.confirmarPendentes);
       if (!(await deps.salvarSeRevisao(c.req.param('id'), estado.revisao, novo)))
         return c.json({ erro: 'Conflito de edição' }, 409);
@@ -211,7 +334,7 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     try {
       const novo = reabrirComissao(estado, c.req.param('grupo'),
-        { id: sessao.usuarioId, perfil: sessao.perfil }, parsed.data.versaoEsperada);
+        atorFolha(sessao), parsed.data.versaoEsperada);
       if (!(await deps.salvarSeRevisao(c.req.param('id'), estado.revisao, novo)))
         return c.json({ erro: 'Conflito de edição' }, 409);
       return c.json({ revisao: novo.revisao, concluido: false });

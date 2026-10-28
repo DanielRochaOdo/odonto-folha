@@ -9,11 +9,11 @@ export const competenciaSchema = z.object({
   mes: z.number().int().min(1).max(12),
 });
 
-export const perfilSchema = z.enum(['ADMIN', 'DP', 'ADM', 'CENTRAL']);
+export const perfilSchema = z.enum(['ADMIN', 'DP', 'CENTRO_CUSTO']);
 export const tipoCampoSchema = z.enum(['moeda', 'percentual', 'data', 'horario']);
 export const classificacaoSchema = z.enum(['provento', 'desconto', 'informativo']);
 export const origemCampoSchema = z.enum(['BENEFICIO', 'COMISSAO']);
-export const responsavelComissaoSchema = z.enum(['ADM', 'CENTRAL', 'NENHUM']);
+export const responsavelComissaoSchema = z.union([z.uuid(), z.literal('NENHUM')]);
 
 const textoObrigatorio = z.string().trim().min(1);
 
@@ -40,6 +40,7 @@ export const campoDinamicoSchema = z.object({
   classificacao: classificacaoSchema,
   ordemGlobal: z.number().int().nonnegative(),
   criadoEm: competenciaSchema,
+  campoOrigemDesconto: textoObrigatorio.optional(),
 });
 
 /** Vínculos de funcionários aos campos válidos para a competência consultada. */

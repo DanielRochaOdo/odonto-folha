@@ -3,7 +3,8 @@ import { z } from '@odontofolha/contracts';
 import type { DependenciasOperacionais, SessaoOperacional } from './operacionais';
 import type { criarBeneficiosPostgres } from '../repositorios/beneficios-postgres';
 import {
-  atualizarBaseRecorrente, definirExcecaoMensal, preverReajuste, confirmarReajuste,
+  atualizarBaseRecorrente, atualizarPercentualDescontoRecorrente,
+  definirExcecaoMensal, preverReajuste, confirmarReajuste,
 } from '../dominio/beneficios';
 
 type Beneficios = ReturnType<typeof criarBeneficiosPostgres>;
@@ -11,6 +12,16 @@ const uuid = z.uuid();
 const valorSchema = z.object({
   funcionarioId: uuid, campoId: uuid,
   valor: z.union([z.number().finite(), z.string().min(1)]),
+  versaoEsperada: z.number().int().nonnegative(),
+}).strict();
+const valorMassaSchema = z.object({
+  funcionariosIds: z.array(uuid).min(1).max(10000), campoId: uuid,
+  valor: z.union([z.number().finite(), z.string().min(1)]),
+  acao: z.enum(['base', 'excecao']), versaoEsperada: z.number().int().nonnegative(),
+}).strict();
+const percentualDescontoSchema = z.object({
+  funcionarioId: uuid, campoOrigemId: uuid,
+  percentual: z.number().finite().min(0).max(100),
   versaoEsperada: z.number().int().nonnegative(),
 }).strict();
 const previaSchema = z.object({
@@ -36,7 +47,7 @@ const confirmarSchema = z.object({
 
 function motivo(error: unknown): { status: 400 | 409; texto: string } {
   const mensagem = error instanceof Error ? error.message : 'Operação inválida';
-  return /Conflito|desatualizada/.test(mensagem)
+  return /Conflito|desatualizada|Competência fechada/.test(mensagem)
     ? { status: 409, texto: 'Valores alterados; atualize a prévia antes de confirmar.' }
     : { status: 400, texto: mensagem };
 }
@@ -75,7 +86,7 @@ export function criarRotasBeneficios(
       const ok = await deps.beneficios.persistir(
         anterior, novo, competenciaId, c.get('sessao').usuarioId);
       return ok ? c.json({ versao: novo.versao, recorrente: true })
-        : c.json({ erro: 'Conflito de atualização' }, 409);
+        : c.json({ erro: 'Competência fechada ou catálogo alterado; atualize e tente novamente.' }, 409);
     } catch (e) {
       const m = motivo(e); return c.json({ erro: m.texto }, m.status);
     }
@@ -95,7 +106,53 @@ export function criarRotasBeneficios(
       const ok = await deps.beneficios.persistir(
         anterior, novo, competenciaId, c.get('sessao').usuarioId);
       return ok ? c.json({ versao: novo.versao, recorrente: false })
-        : c.json({ erro: 'Conflito de atualização' }, 409);
+        : c.json({ erro: 'Competência fechada ou catálogo alterado; atualize e tente novamente.' }, 409);
+    } catch (e) {
+      const m = motivo(e); return c.json({ erro: m.texto }, m.status);
+    }
+  });
+  app.post('/beneficios/:competenciaId/percentual-desconto', async c => {
+    const parsed = percentualDescontoSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ erro: 'Percentual de desconto inválido' }, 400);
+    const competenciaId = c.req.param('competenciaId');
+    const estado = await deps.buscarCompetencia(competenciaId);
+    if (!estado) return c.json({ erro: 'Competência inexistente' }, 404);
+    try {
+      const anterior = await deps.beneficios.carregar();
+      const { funcionarioId, campoOrigemId, percentual, versaoEsperada } = parsed.data;
+      const novo = atualizarPercentualDescontoRecorrente(anterior, estado,
+        funcionarioId, campoOrigemId, percentual,
+        { id: c.get('sessao').usuarioId, perfil: c.get('sessao').perfil }, versaoEsperada);
+      const ok = await deps.beneficios.persistir(
+        anterior, novo, competenciaId, c.get('sessao').usuarioId);
+      return ok ? c.json({ versao: novo.versao, recorrente: true })
+        : c.json({ erro: 'Competência fechada ou catálogo alterado; atualize e tente novamente.' }, 409);
+    } catch (e) {
+      const m = motivo(e); return c.json({ erro: m.texto }, m.status);
+    }
+  });
+  app.post('/beneficios/:competenciaId/valores-em-massa', async c => {
+    const parsed = valorMassaSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ erro: 'Dados inválidos para aplicação em massa' }, 400);
+    const competenciaId = c.req.param('competenciaId');
+    const estado = await deps.buscarCompetencia(competenciaId);
+    if (!estado) return c.json({ erro: 'Competência inexistente' }, 404);
+    try {
+      const anterior = await deps.beneficios.carregar();
+      if (anterior.versao !== parsed.data.versaoEsperada)
+        return c.json({ erro: 'Valores alterados; atualize a competência.' }, 409);
+      let novo = anterior;
+      for (const funcionarioId of [...new Set(parsed.data.funcionariosIds)]) {
+        novo = parsed.data.acao === 'base'
+          ? atualizarBaseRecorrente(novo, estado, funcionarioId, parsed.data.campoId,
+            parsed.data.valor, { id: c.get('sessao').usuarioId, perfil: c.get('sessao').perfil }, novo.versao)
+          : definirExcecaoMensal(novo, estado, funcionarioId, parsed.data.campoId,
+            parsed.data.valor, { id: c.get('sessao').usuarioId, perfil: c.get('sessao').perfil }, novo.versao);
+      }
+      const ok = await deps.beneficios.persistir(anterior, novo, competenciaId,
+        c.get('sessao').usuarioId);
+      return ok ? c.json({ versao: novo.versao, salvos: novo.versao - anterior.versao })
+        : c.json({ erro: 'Competência fechada ou catálogo alterado; atualize e tente novamente.' }, 409);
     } catch (e) {
       const m = motivo(e); return c.json({ erro: m.texto }, m.status);
     }
@@ -127,7 +184,7 @@ export function criarRotasBeneficios(
       const ok = await deps.beneficios.persistir(
         anterior, novo, competenciaId, c.get('sessao').usuarioId);
       return ok ? c.json({ versao: novo.versao, afetados: parsed.data.previa.linhas.length })
-        : c.json({ erro: 'Conflito de atualização' }, 409);
+        : c.json({ erro: 'Competência fechada ou catálogo alterado; atualize e tente novamente.' }, 409);
     } catch (e) {
       const m = motivo(e); return c.json({ erro: m.texto }, m.status);
     }

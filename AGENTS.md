@@ -23,3 +23,13 @@ Este arquivo é a porta de entrada de todo agente (incluindo Codex).
     - Incluir essa seção de "Impacto operacional" também na descrição dos próximos PRs e no resumo de conclusão. Não omitir itens sem mudança: escrever "Nenhuma nova branch", "Nenhuma function nova" ou "Nenhuma migration", conforme o caso.
 
 Fluxo: contexto → plano → branch → implementação pequena → testes → PR → aprovação humana.
+
+## Comunicação e redação técnica — ASD-STE100
+
+- Ao falar com o proprietário, use linguagem direta, simples e precisa, conforme os princípios do ASD-STE100, adaptados ao português do Brasil.
+- Escreva frases curtas. Apresente uma ideia ou instrução por frase. Prefira voz ativa, palavras concretas e termos consistentes.
+- Para procedimentos, informe as ações em ordem. Diga o resultado esperado e o que fazer se ele não ocorrer.
+- Explique siglas na primeira ocorrência. Evite expressões vagas, jargão desnecessário e instruções ambíguas.
+- Separe fatos confirmados de hipóteses. Informe limites e bloqueios com clareza.
+- O ASD-STE100 é um padrão de inglês técnico controlado. Em pt-BR, aplicar estes princípios não significa declarar conformidade oficial com o padrão.
+- Referência: ASD-STE100, Issue 9, janeiro de 2025: https://www.asd-ste100.org/.

@@ -26,6 +26,7 @@ código e validação correspondentes; escopo da primeira entrega é ponta a pon
 
 ## G3 — Interface e cadastros
 - [ ] Design responsivo desktop-first, identidade Odontoart e acessibilidade.
+- [ ] Validar visualmente o Glassmorphism v1.0 no login, em Competências e em Cadastros antes de aplicar aos demais módulos.
 - [ ] Empresas, unidades, setores, colaboradores, vínculos e usuários por perfil.
 - [ ] Gestão de status dos funcionários e mudanças por competência.
 - [ ] Tela inicial de competências, cards e filtros.
