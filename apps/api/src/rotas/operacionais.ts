@@ -20,6 +20,7 @@ export type DependenciasOperacionais = {
    */
   autenticar: (cabecalhos: Headers) => Promise<SessaoOperacional | null>;
   buscarCompetencia: (id: string) => Promise<EstadoCompetencia | null>;
+  reconciliarCamposRetroativos: (id: string, autorId: string) => Promise<number>;
   /** Compare-and-swap ATÔMICO por competência; false = conflito HTTP 409. */
   salvarSeRevisao: (id: string, revisaoAnterior: number, estado: EstadoCompetencia) => Promise<boolean>;
   funcionariosAtivos: () => Promise<ReadonlySet<string>>;
@@ -176,7 +177,9 @@ export function criarRotasOperacionais(deps: DependenciasOperacionais) {
     const sessao = c.get('sessao') as SessaoOperacional;
     if (!podeEditarConsolidacao(sessao.perfil))
       return c.json({ erro: 'Sem permissão para consolidação geral' }, 403);
-    const estado = await deps.buscarCompetencia(c.req.param('id'));
+    const id = c.req.param('id');
+    await deps.reconciliarCamposRetroativos(id, sessao.usuarioId);
+    const estado = await deps.buscarCompetencia(id);
     if (!estado) return c.json({ erro: 'Competência não encontrada' }, 404);
     return c.json({ ...consolidarComBeneficios(estado, await deps.obterBeneficios(), await deps.funcionariosAtivos()),
       revisao: estado.revisao, versaoBeneficios: (await deps.obterBeneficios()).versao,
