@@ -42,7 +42,6 @@ export type PreviaReajuste = {
   linhas: { funcionarioId: string; anterior: number; proposto: number }[];
 };
 const ordem = (c: Competencia) => c.ano * 12 + c.mes;
-const competenciaAtual = () => new Date().getUTCFullYear() * 12 + new Date().getUTCMonth() + 1;
 const igual = (a: Competencia, b: Competencia) => a.ano === b.ano && a.mes === b.mes;
 const centavos = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 let ultimoInstante = 0;
@@ -131,8 +130,6 @@ export function atualizarPercentualDescontoRecorrente(
     throw new Error('Desconto automático não está ativo para este campo');
   if (!Number.isFinite(percentual) || percentual < 0 || percentual > 100)
     throw new Error('O percentual deve estar entre 0 e 100');
-  if (ordem(estado.competencia) < competenciaAtual())
-    throw new Error('Percentuais de desconto só podem ser alterados da competência atual em diante');
   const evento: PercentualDescontoBeneficio = {
     id: crypto.randomUUID(), funcionarioId, campoOrigemId, percentual,
     inicio: estado.competencia, criadaEm: hoje(), autorId: ator.id,
