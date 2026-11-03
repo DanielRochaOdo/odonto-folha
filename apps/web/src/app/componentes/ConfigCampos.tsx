@@ -441,9 +441,8 @@ export default function ConfigCampos() {
     const percentual = Number(percentualDescontoCriacao.replace(',', '.'));
     if (aba === 'BENEFICIO' && tipo === 'moeda' && geraDescontoCriacao &&
       (!nomeColunaDescontoCriacao.trim() || !anoDesconto || !mesDesconto || mesDesconto > 12 ||
-        anoDesconto * 12 + mesDesconto < Number(mesAtual().slice(0, 4)) * 12 + Number(mesAtual().slice(5, 7)) ||
         !Number.isFinite(percentual) || percentual < 0 || percentual > 100)) {
-      setErroCriacao('Informe o nome da coluna, uma competência atual ou futura e um percentual entre 0 e 100.');
+      setErroCriacao('Informe o nome da coluna, uma competência válida e um percentual entre 0 e 100.');
       setPasso(2);
       return;
     }
@@ -556,11 +555,9 @@ export default function ConfigCampos() {
         if (!campo.descontoAutomatico || campo.tipo !== 'moeda') continue;
         const [ano, mes] = campo.vigenciaDesconto.split('-').map(Number);
         const percentual = Number(campo.percentualDesconto.replace(',', '.'));
-        const competenciaAtual = mesAtual();
         if (!campo.nomeColunaDesconto.trim() || !ano || !mes || mes > 12 ||
-          ano * 12 + mes < Number(competenciaAtual.slice(0, 4)) * 12 + Number(competenciaAtual.slice(5, 7)) ||
           !Number.isFinite(percentual) || percentual < 0 || percentual > 100) {
-          setErro('Informe o nome da coluna, uma competência atual ou futura e um percentual entre 0 e 100.');
+          setErro('Informe o nome da coluna, uma competência válida e um percentual entre 0 e 100.');
           return;
         }
       }
@@ -1320,7 +1317,7 @@ export default function ConfigCampos() {
                             </span>
                           </label>
                           <label htmlFor="wizard-desconto-vigencia">Vigente a partir da competência
-                            <input id="wizard-desconto-vigencia" type="month" min={mesAtual()} required
+                            <input id="wizard-desconto-vigencia" type="month" required
                               value={vigenciaDescontoCriacao}
                               onChange={e => setVigenciaDescontoCriacao(e.target.value)} />
                           </label>
@@ -1487,7 +1484,7 @@ export default function ConfigCampos() {
                               <label htmlFor={`editar-desconto-vigencia-${campo.id}`}>
                                 <span>Vigente a partir da competência</span>
                                 <input id={`editar-desconto-vigencia-${campo.id}`} type="month"
-                                  min={mesAtual()} required value={campo.vigenciaDesconto}
+                                  required value={campo.vigenciaDesconto}
                                   onChange={evento => setCamposGrupoEditando(atual => atual.map(item =>
                                     item.id === campo.id
                                       ? { ...item, vigenciaDesconto: evento.target.value } : item))} />
@@ -1597,7 +1594,7 @@ export default function ConfigCampos() {
                       </span>
                     </label>
                     <label htmlFor="desconto-vigencia">Vigente a partir da competência
-                      <input id="desconto-vigencia" type="month" min={mesAtual()} required value={vigenciaDesconto}
+                      <input id="desconto-vigencia" type="month" required value={vigenciaDesconto}
                         onChange={evento => setVigenciaDesconto(evento.target.value)} />
                     </label>
                     <p className="config-ajuda-bases">O percentual padrão vale para todos. Percentuais individuais podem ser ajustados aqui ou na Consolidação e ficam recorrentes.</p>

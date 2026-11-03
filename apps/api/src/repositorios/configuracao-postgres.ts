@@ -15,7 +15,6 @@ type CampoEdicaoCompleta = CampoNovo & { id: string; ativo: boolean };
 export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
   const db = conexao.db, t = tabelas;
   const numeroMes = (ano: number, mes: number) => ano * 12 + mes;
-  const competenciaAtual = () => new Date().getUTCFullYear() * 12 + new Date().getUTCMonth() + 1;
   let ultimoInstanteRegra = 0;
   const instanteRegra = () => {
     ultimoInstanteRegra = Math.max(Date.now(), ultimoInstanteRegra + 1);
@@ -140,8 +139,6 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
     campoOrigemId: string, nomeColuna: string, percentualPadrao: number,
     ano: number, mes: number, ativo: boolean, autor: string,
   ) {
-    if (numeroMes(ano, mes) < competenciaAtual())
-      throw new Error('A regra só pode iniciar na competência atual ou em uma futura.');
     return db.transaction(async tx => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(9724101)`);
       const [competencia] = await tx.select({ id: t.competencias.id,
@@ -582,8 +579,6 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
         const regra = dados.descontoBeneficio;
         if (dados.origem !== 'BENEFICIO' || dados.campo.tipo !== 'moeda')
           throw new Error('Desconto automático exige um campo monetário de benefício.');
-        if (numeroMes(regra.ano, regra.mes) < competenciaAtual())
-          throw new Error('A regra de desconto só pode iniciar na competência atual ou em uma futura.');
         const [competenciaDesconto] = await tx.select({ fechadaEm: t.competencias.fechadaEm })
           .from(t.competencias)
           .where(and(eq(t.competencias.ano, regra.ano), eq(t.competencias.mes, regra.mes)))
