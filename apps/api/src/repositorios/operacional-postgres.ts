@@ -1,6 +1,6 @@
 import type { EstadoCompetencia } from '../dominio/competencias';
 import type { Funcionario, CampoDinamico, VinculoCampo, Lancamento } from '@odontofolha/contracts';
-import { and, desc, eq, tabelas, type ConexaoFolha } from '@odontofolha/database';
+import { and, desc, eq, sql, tabelas, type ConexaoFolha } from '@odontofolha/database';
 import type { DependenciasOperacionais } from '../rotas/operacionais';
 
 /**
@@ -15,6 +15,87 @@ export function criarRepositorioPostgres(
 ): Omit<DependenciasOperacionais, 'autenticar' | 'obterBeneficios'> {
   const { db } = conexao;
   const t = tabelas;
+
+  /**
+   * Completa o retrato de uma competência aberta com campos retroativos que
+   * já existiam no cadastro. A operação é idempotente e não altera meses fechados.
+   */
+  async function reconciliarCamposRetroativos(id: string, autorId: string) {
+    return db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${id}))`);
+      const [competencia] = await tx.select().from(t.competencias)
+        .where(eq(t.competencias.id, id)).limit(1);
+      if (!competencia || competencia.fechadaEm) return 0;
+
+      const atual = competencia.ano * 12 + competencia.mes;
+      const [campos, presentes] = await Promise.all([
+        tx.select({ id: t.camposDinamicos.id, grupoId: t.camposDinamicos.grupoId,
+          ano: t.camposDinamicos.anoCriacao, mes: t.camposDinamicos.mesCriacao,
+          origem: t.gruposDinamicos.origem })
+          .from(t.camposDinamicos)
+          .innerJoin(t.gruposDinamicos, eq(t.camposDinamicos.grupoId, t.gruposDinamicos.id)),
+        tx.select({ campoId: t.camposCompetencia.campoId }).from(t.camposCompetencia)
+          .where(eq(t.camposCompetencia.competenciaId, id)),
+      ]);
+      const presentesIds = new Set(presentes.map(campo => campo.campoId));
+      const ausentes = campos.filter(campo => !presentesIds.has(campo.id) &&
+        campo.ano * 12 + campo.mes <= atual);
+      if (!ausentes.length) return 0;
+
+      await tx.insert(t.camposCompetencia).values(ausentes.map(campo => ({
+        competenciaId: id, campoId: campo.id,
+        visivelHistorico: true, edicaoBloqueada: false,
+      }))).onConflictDoNothing();
+
+      const [pessoas, associados, grupos] = await Promise.all([
+        tx.select({ vinculoId: t.funcionariosCompetencia.vinculoId })
+          .from(t.funcionariosCompetencia)
+          .where(eq(t.funcionariosCompetencia.competenciaId, id)),
+        tx.select().from(t.vinculosGrupos),
+        tx.select({ id: t.gruposDinamicos.id, responsavel: t.gruposDinamicos.responsavel,
+          centroCustoId: t.gruposDinamicos.centroCustoId,
+          nomeCentro: t.centrosCusto.nome })
+          .from(t.gruposDinamicos)
+          .leftJoin(t.centrosCusto, eq(t.gruposDinamicos.centroCustoId, t.centrosCusto.id)),
+      ]);
+      const pessoasIds = new Set(pessoas.map(pessoa => pessoa.vinculoId));
+      const gruposPorId = new Map(grupos.map(grupo => [grupo.id, grupo]));
+      const funcionariosPorGrupo = new Map<string, Set<string>>();
+      for (const associado of associados) {
+        const lista = funcionariosPorGrupo.get(associado.grupoId) ?? new Set<string>();
+        lista.add(associado.vinculoId);
+        funcionariosPorGrupo.set(associado.grupoId, lista);
+      }
+
+      for (const campo of ausentes) {
+        const funcionariosDoGrupo = funcionariosPorGrupo.get(campo.grupoId);
+        const vinculos = [...(funcionariosDoGrupo ?? [])].filter(vinculoId => pessoasIds.has(vinculoId));
+        if (vinculos.length) await tx.insert(t.vinculosCamposCompetencia).values(
+          vinculos.map(vinculoId => ({ competenciaId: id, vinculoId,
+            campoId: campo.id, ativo: true }))).onConflictDoNothing();
+
+        if (campo.origem === 'COMISSAO') {
+          const grupo = gruposPorId.get(campo.grupoId);
+          if (grupo) await tx.insert(t.enviosComissoes).values({
+            competenciaId: id, grupoId: grupo.id,
+            responsavel: grupo.nomeCentro ?? grupo.responsavel,
+            centroCustoId: grupo.centroCustoId,
+            concluido: false, concluidoEm: null, concluidoPor: null,
+          }).onConflictDoNothing();
+        }
+      }
+
+      await tx.update(t.competencias)
+        .set({ revisao: sql`${t.competencias.revisao} + 1` })
+        .where(eq(t.competencias.id, id));
+      await tx.insert(t.auditoria).values({
+        usuarioId: autorId, competenciaId: id, entidade: 'COMPETENCIA',
+        entidadeId: id, acao: 'CAMPOS_RETROATIVOS_RECONCILIADOS',
+        detalhes: { quantidadeCampos: ausentes.length },
+      });
+      return ausentes.length;
+    });
+  }
 
   async function buscarCompetencia(id: string): Promise<EstadoCompetencia | null> {
     const [competencia] = await db.select().from(t.competencias)
@@ -426,5 +507,5 @@ export function criarRepositorioPostgres(
   }
 
   return { buscarCompetencia, salvarSeRevisao, funcionariosAtivos, nomesExportacao,
-    listarCompetencias, abrirNovaCompetencia };
+    listarCompetencias, abrirNovaCompetencia, reconciliarCamposRetroativos };
 }

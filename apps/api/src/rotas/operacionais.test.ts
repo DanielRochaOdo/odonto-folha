@@ -22,6 +22,7 @@ function ambiente(sessao: SessaoOperacional | null = null, conflito = false) {
   const app = criarRotasOperacionais({
     autenticar: async () => sessao,
     buscarCompetencia: async () => estado,
+    reconciliarCamposRetroativos: async () => 0,
     salvarSeRevisao: async (_id, revisao, novo) => {
       if (conflito || estado.revisao !== revisao) return false;
       estado = novo; return true;
