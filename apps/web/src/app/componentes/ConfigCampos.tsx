@@ -1145,7 +1145,7 @@ export default function ConfigCampos() {
                                           <input className="editor-valor-base" type="text" inputMode="decimal"
                                             aria-label={`${desconto.nomeColuna} em percentual para ${funcionario.nome}`}
                                             value={valoresPercentuaisDesconto[chave] ?? ''}
-                                            disabled={ocupado || carregandoBases || vigenciaBases < mesAtual()}
+                                            disabled={ocupado || carregandoBases}
                                             onChange={evento => setValoresPercentuaisDesconto(atual => ({
                                               ...atual, [chave]: atualizarMascaraComCursor(
                                                 evento.currentTarget, 'percentual'),

@@ -208,8 +208,6 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
       const idsFuncionarios = new Set(associados.map(v => v.vinculoId));
       const pares = new Set<string>();
       const vigencia = ano * 12 + mes;
-      if (entradasPercentuais.length && vigencia < competenciaAtual())
-        throw new Error('Percentuais individuais só podem mudar da competência atual em diante.');
       const novas: typeof entradas = [];
       for (const entrada of entradas) {
         const chave = entrada.funcionarioId + ':' + entrada.campoId;
@@ -218,8 +216,6 @@ export function criarConfiguracaoPostgres(conexao: ConexaoFolha) {
         const campo = campoPorId.get(entrada.campoId);
         if (!campo || !campo.ativo || !idsFuncionarios.has(entrada.funcionarioId))
           throw new Error('Funcionário ou campo fora do benefício');
-        if (campo.anoCriacao * 12 + campo.mesCriacao > vigencia)
-          throw new Error('A vigência do valor é anterior à criação do campo');
         if (campo.tipo === 'moeda' || campo.tipo === 'percentual') {
           if (typeof entrada.valor !== 'number' || !Number.isFinite(entrada.valor) ||
             (campo.tipo === 'moeda' && entrada.valor < 0))
