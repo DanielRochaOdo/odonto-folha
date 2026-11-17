@@ -756,7 +756,7 @@ export default function PaginaInicial() {
             competenciaVigencia={competenciaSelecionadaResumo
               ? `${competenciaSelecionadaResumo.ano}-${String(competenciaSelecionadaResumo.mes).padStart(2, '0')}`
               : null}
-            aoSincronizar={atualizarModuloPrincipal} /> : aba === 'Configuração' ? <ConfigCampos /> : aba === 'Painel' ? (
+            aoSincronizar={atualizarModuloPrincipal} /> : aba === 'Configuração' ? <ConfigCampos aoSincronizar={atualizarModuloPrincipal} /> : aba === 'Painel' ? (
             <>
               <div className="titulo-secao">
                 <div><h2>Visão geral</h2><p>Selecione uma competência para consultar os registros.</p></div>

@@ -31,14 +31,16 @@ export function criarRepositorioPostgres(
       const [campos, presentes] = await Promise.all([
         tx.select({ id: t.camposDinamicos.id, grupoId: t.camposDinamicos.grupoId,
           ano: t.camposDinamicos.anoCriacao, mes: t.camposDinamicos.mesCriacao,
-          origem: t.gruposDinamicos.origem })
+          origem: t.gruposDinamicos.origem, ativo: t.camposDinamicos.ativo,
+          grupoAtivo: t.gruposDinamicos.ativo })
           .from(t.camposDinamicos)
           .innerJoin(t.gruposDinamicos, eq(t.camposDinamicos.grupoId, t.gruposDinamicos.id)),
         tx.select({ campoId: t.camposCompetencia.campoId }).from(t.camposCompetencia)
           .where(eq(t.camposCompetencia.competenciaId, id)),
       ]);
       const presentesIds = new Set(presentes.map(campo => campo.campoId));
-      const ausentes = campos.filter(campo => !presentesIds.has(campo.id) &&
+      const ausentes = campos.filter(campo => campo.ativo && campo.grupoAtivo &&
+        !presentesIds.has(campo.id) &&
         campo.ano * 12 + campo.mes <= atual);
       if (!ausentes.length) return 0;
 
@@ -120,7 +122,10 @@ export function criarRepositorioPostgres(
       }).from(t.camposCompetencia)
         .innerJoin(t.camposDinamicos, eq(t.camposCompetencia.campoId, t.camposDinamicos.id))
         .innerJoin(t.gruposDinamicos, eq(t.camposDinamicos.grupoId, t.gruposDinamicos.id))
-        .where(eq(t.camposCompetencia.competenciaId, id))
+        .where(competencia.fechadaEm
+          ? eq(t.camposCompetencia.competenciaId, id)
+          : and(eq(t.camposCompetencia.competenciaId, id),
+            eq(t.camposDinamicos.ativo, true), eq(t.gruposDinamicos.ativo, true)))
         .orderBy(t.camposDinamicos.ordemGlobal),
       db.select().from(t.vinculosCamposCompetencia)
         .where(and(eq(t.vinculosCamposCompetencia.competenciaId, id),
@@ -162,6 +167,8 @@ export function criarRepositorioPostgres(
     const vinculosDaCompetencia: VinculoCampo[] = vinculos.map(v => ({
       funcionarioId: v.vinculoId, campoId: v.campoId,
     }));
+    const gruposComissaoVisiveis = new Set(colunas
+      .filter(campo => campo.origem === 'COMISSAO').map(campo => campo.grupoId));
     const registros: Lancamento[] = lancamentos.map(l => ({
       id: l.id, funcionarioId: l.funcionarioId, campoId: l.campoId,
       modo: l.modo, valor: l.valorNumerico !== null
@@ -172,11 +179,12 @@ export function criarRepositorioPostgres(
       competencia: { ano: competencia.ano, mes: competencia.mes },
       funcionarios, campos, vinculos: vinculosDaCompetencia, lancamentos: registros,
       camposBloqueados: colunas.filter(c => c.bloqueado).map(c => c.id),
-      envios: envios.map(e => ({
+      envios: envios.filter(e => competencia.fechadaEm || gruposComissaoVisiveis.has(e.grupoId))
+        .map(e => ({
         grupoId: e.grupoId, responsavel: e.responsavel, centroCustoId: e.centroCustoId,
         concluido: e.concluido, concluidoEm: e.concluidoEm?.toISOString() ?? null,
         concluidoPor: e.concluidoPor,
-      })),
+        })),
       fechadaEm: competencia.fechadaEm?.toISOString() ?? null,
       fechadaPor: competencia.fechadaPor,
       fechadaComPendencias: competencia.fechadaComPendencias,
