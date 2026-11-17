@@ -86,7 +86,7 @@ async function lerResposta(resposta: Response) {
   throw new Error(mensagem);
 }
 
-export default function ConfigCampos() {
+export default function ConfigCampos({ aoSincronizar }: { aoSincronizar: () => Promise<void> }) {
   const [dados, setDados] = useState<Dados>(inicio);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [aba, setAba] = useState<Origem>('BENEFICIO');
@@ -597,6 +597,7 @@ export default function ConfigCampos() {
       }
       setGrupoEditando(null);
       await carregar();
+      await aoSincronizar();
       setAviso('Cadastro, campos e funcionários vinculados atualizados.');
     } catch (e) { setErro(mensagemErro(e)); }
     finally { setOcupado(false); }
@@ -614,6 +615,7 @@ export default function ConfigCampos() {
       await enviar('/api/configuracao/grupos/' + encodeURIComponent(grupo.id) + '/status', { ativo: ativar });
       if (!ativar && grupoId === grupo.id) setGrupoId('');
       await carregar();
+      await aoSincronizar();
       setAviso(ativar ? 'Cadastro restaurado.' : 'Cadastro excluído dos ativos e arquivado com o histórico preservado.');
     } catch (e) { setErro(mensagemErro(e)); }
     finally { setOcupado(false); }
